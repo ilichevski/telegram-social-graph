@@ -1,0 +1,132 @@
+from datetime import date, datetime, timezone
+
+from social_graph_service.models import Chat, Message
+from social_graph_service.pipeline import (
+    _apply_llm_to_snapshot,
+    _enrich_snapshot_series,
+    _select_llm_chats_for_enrichment,
+)
+from social_graph_service.temporal_analysis import TemporalConfig, analyze_temporal
+
+
+def _message(
+    message_id: str,
+    sender_id: str,
+    sender_name: str,
+    dt: datetime,
+    text: str,
+    is_outgoing: bool,
+) -> Message:
+    return Message(
+        chat_id="chat-1",
+        chat_name="Alice",
+        chat_type="private",
+        message_id=message_id,
+        sender_id=sender_id,
+        sender_name=sender_name,
+        timestamp=dt,
+        text=text,
+        is_outgoing=is_outgoing,
+    )
+
+
+def _build_payload() -> tuple[Chat, TemporalConfig, dict]:
+    chat = Chat(
+        chat_id="chat-1",
+        name="Alice",
+        chat_type="private",
+        messages=[
+            _message("1", "self", "Me", datetime(2026, 4, 4, 10, 0, tzinfo=timezone.utc), "thanks", True),
+            _message("2", "alice", "Alice", datetime(2026, 4, 4, 10, 5, tzinfo=timezone.utc), "love", False),
+            _message("3", "self", "Me", datetime(2026, 4, 11, 10, 0, tzinfo=timezone.utc), "see you", True),
+            _message("4", "alice", "Alice", datetime(2026, 4, 11, 10, 8, tzinfo=timezone.utc), "great", False),
+            _message("5", "self", "Me", datetime(2026, 4, 18, 10, 0, tzinfo=timezone.utc), "you matter", True),
+            _message("6", "alice", "Alice", datetime(2026, 4, 18, 10, 7, tzinfo=timezone.utc), "miss you", False),
+        ],
+    )
+    config = TemporalConfig(
+        as_of_date=date(2026, 5, 2),
+        start_date=date(2026, 4, 4),
+        end_date=date(2026, 5, 2),
+        cadence_days=7,
+    )
+    payload = analyze_temporal([chat], config)
+    return chat, config, payload
+
+
+def test_llm_enrichment_updates_current_snapshot_outputs() -> None:
+    chat, config, payload = _build_payload()
+    snapshot_now = payload["snapshot_now"]
+    current_graph = snapshot_now["graph_result"]
+
+    selected = _select_llm_chats_for_enrichment([chat], snapshot_now)
+    assert [item.chat_id for item in selected] == ["chat-1"]
+
+    baseline_warmth = snapshot_now["relationships"][0]["outbound"]["warmth_score"]
+    baseline_edge_warmth = current_graph.edges[0].metrics["warmth"]
+
+    _apply_llm_to_snapshot(
+        snapshot=snapshot_now,
+        llm_scores={
+            "chat-1": {
+                "self_to_peer_warmth": 0.9,
+                "peer_to_self_warmth": 0.85,
+                "mutuality": 0.88,
+                "tension": 0.1,
+            }
+        },
+        temporal_config=config,
+        update_graph=True,
+    )
+
+    relationship = snapshot_now["relationships"][0]
+    assert relationship["outbound"]["warmth_score"] > baseline_warmth
+    assert relationship["llm"]["mutuality"] == 0.88
+    assert current_graph.edges[0].metrics["warmth"] > baseline_edge_warmth
+
+
+def test_enrich_snapshot_series_resumes_from_progress(tmp_path, monkeypatch) -> None:
+    chat, config, payload = _build_payload()
+    calls: list[int] = []
+
+    def fake_enrich(chats, cache=None, config=None, on_chat_scored=None):
+        chat_list = list(chats)
+        calls.append(len(chat_list))
+        result = {
+            "chat-1": {
+                "self_to_peer_warmth": 0.9,
+                "peer_to_self_warmth": 0.85,
+                "mutuality": 0.88,
+                "tension": 0.1,
+            }
+        }
+        if on_chat_scored is not None:
+            on_chat_scored("chat-1", result["chat-1"], False)
+        return result
+
+    monkeypatch.setattr("social_graph_service.pipeline.enrich_private_chat_scores", fake_enrich)
+
+    result = _enrich_snapshot_series(
+        chats=[chat],
+        snapshot_series=payload["snapshot_series"],
+        temporal_payload=payload,
+        temporal_config=config,
+        output_dir=tmp_path,
+    )
+
+    assert len(result) == len(payload["snapshot_series"])
+    assert calls
+    assert (tmp_path / ".llm-cache.json").exists()
+    assert (tmp_path / ".llm-progress.json").exists()
+
+    calls.clear()
+    resumed = _enrich_snapshot_series(
+        chats=[chat],
+        snapshot_series=payload["snapshot_series"],
+        temporal_payload=payload,
+        temporal_config=config,
+        output_dir=tmp_path,
+    )
+
+    assert len(resumed) == len(payload["snapshot_series"])
+    assert calls == []

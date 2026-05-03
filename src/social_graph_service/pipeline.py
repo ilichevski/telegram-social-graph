@@ -1,0 +1,415 @@
+from __future__ import annotations
+
+from dataclasses import asdict
+from datetime import date, datetime, time, timezone
+import json
+from pathlib import Path
+from typing import Any, Dict, Optional
+
+from .chat_profiles import build_chat_profiles
+from .exporters import write_outputs
+from .ollama import enrich_private_chat_scores
+from .temporal_analysis import (
+    ACTIVE_STATUSES,
+    CURRENT_TIE_TOP_LIMIT,
+    TemporalConfig,
+    _build_network_snapshot,
+    _build_person_reports,
+    _build_relationship_timeseries,
+    _classify_status,
+    _classify_trend,
+    _compact_weekly_snapshot,
+    _relationship_drivers,
+    _relationship_to_edges,
+    _snapshot_delta,
+    analyze_temporal,
+)
+from .telegram_export import load_chats
+from .models import Chat
+
+LLM_CHAT_LIMIT = 40
+LLM_MIN_MESSAGES_90D = 6
+LLM_ELIGIBLE_STATUSES = ACTIVE_STATUSES | {"fading"}
+
+
+def run_analysis(
+    export_path: Path,
+    output_dir: Path,
+    *,
+    self_name: Optional[str] = None,
+    as_of_date: Optional[date] = None,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    cadence_days: int = 7,
+    window_days: int = 90,
+    short_window_days: int = 30,
+    with_llm: bool = False,
+) -> Dict[str, Any]:
+    chats, import_stats = load_chats(export_path, self_name=self_name)
+    temporal_config = TemporalConfig(
+        self_label=self_name or "You",
+        as_of_date=as_of_date,
+        start_date=start_date,
+        end_date=end_date,
+        cadence_days=cadence_days,
+        window_days=window_days,
+        short_window_days=short_window_days,
+    )
+    temporal_payload = analyze_temporal(
+        chats,
+        temporal_config,
+    )
+    snapshot_now = temporal_payload["snapshot_now"]
+    current_graph = snapshot_now["graph_result"]
+    effective_as_of = date.fromisoformat(temporal_payload["analysis_config"]["as_of_date"])
+    visible_chats = _filter_chats_as_of(chats, effective_as_of)
+
+    llm_scores: Dict[str, Dict[str, float]] = {}
+    llm_scores_by_date: Dict[str, Dict[str, Dict[str, float]]] = {}
+    if with_llm:
+        snapshot_series = temporal_payload.get("snapshot_series") or []
+        if snapshot_series:
+            llm_scores_by_date = _enrich_snapshot_series(
+                chats=chats,
+                snapshot_series=snapshot_series,
+                temporal_payload=temporal_payload,
+                temporal_config=temporal_config,
+                output_dir=output_dir,
+            )
+            latest_date = snapshot_now["as_of_date"]
+            llm_scores = llm_scores_by_date.get(latest_date, {})
+        else:
+            llm_input_chats = _select_llm_chats_for_enrichment(visible_chats, snapshot_now)
+            llm_scores = enrich_private_chat_scores(llm_input_chats) if llm_input_chats else {}
+            if llm_scores:
+                _apply_llm_to_snapshot(
+                    snapshot=snapshot_now,
+                    llm_scores=llm_scores,
+                    temporal_config=temporal_config,
+                    update_graph=True,
+                )
+
+    snapshot_now_for_output = {key: value for key, value in snapshot_now.items() if key != "graph_result"}
+
+    summary: Dict[str, Any] = {
+        "input_path": str(export_path),
+        "output_path": str(output_dir),
+        "import_stats": asdict(import_stats),
+        "graph_summary": current_graph.summary,
+        "analysis_config": temporal_payload["analysis_config"],
+        "llm_scores": llm_scores,
+        "llm_scores_by_date": llm_scores_by_date,
+        "llm_enriched_chat_count": len(llm_scores),
+        "llm_selected_chat_count": len(llm_scores),
+        "snapshot_now": snapshot_now_for_output,
+        "weekly_snapshots": temporal_payload["weekly_snapshots"],
+        "relationship_timeseries": temporal_payload["relationship_timeseries"],
+        "network_timeseries": temporal_payload["network_timeseries"],
+        "person_reports": temporal_payload["person_reports"],
+        "chat_profiles": build_chat_profiles(visible_chats),
+    }
+    write_outputs(current_graph, output_dir, summary)
+    return summary
+
+
+def _filter_chats_as_of(chats: list[Chat], as_of_date: date) -> list[Chat]:
+    end_dt = datetime.combine(as_of_date, time.max, tzinfo=timezone.utc)
+    filtered: list[Chat] = []
+    for chat in chats:
+        messages = [message for message in chat.messages if message.timestamp <= end_dt]
+        if not messages:
+            continue
+        filtered.append(
+            Chat(
+                chat_id=chat.chat_id,
+                name=chat.name,
+                chat_type=chat.chat_type,
+                messages=messages,
+            )
+        )
+    return filtered
+
+
+def _select_llm_chats_for_enrichment(chats: list[Chat], snapshot_now: Dict[str, Any]) -> list[Chat]:
+    chats_by_id = {chat.chat_id: chat for chat in chats if chat.chat_type == "private"}
+    selected: list[Chat] = []
+
+    for relationship in snapshot_now.get("relationships", []):
+        pair = relationship.get("pair", {})
+        if int(pair.get("messages_total_90d", 0)) < LLM_MIN_MESSAGES_90D:
+            continue
+        if pair.get("status") not in LLM_ELIGIBLE_STATUSES and int(pair.get("messages_total_30d", 0)) == 0:
+            continue
+        chat = chats_by_id.get(relationship["chat_id"])
+        if chat is None:
+            continue
+        selected.append(chat)
+        if len(selected) >= LLM_CHAT_LIMIT:
+            break
+
+    return selected
+
+
+def _enrich_snapshot_series(
+    *,
+    chats: list[Chat],
+    snapshot_series: list[Dict[str, Any]],
+    temporal_payload: Dict[str, Any],
+    temporal_config: TemporalConfig,
+    output_dir: Path,
+) -> Dict[str, Dict[str, Dict[str, float]]]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    cache_path = output_dir / ".llm-cache.json"
+    progress_path = output_dir / ".llm-progress.json"
+    llm_scores_by_date = _load_json_mapping(progress_path)
+    llm_response_cache = _load_json_mapping(cache_path)
+    total_snapshots = len(snapshot_series)
+
+    for index, snapshot in enumerate(snapshot_series, start=1):
+        snapshot_key = snapshot["as_of_date"]
+        snapshot_date = date.fromisoformat(snapshot_key)
+        if snapshot_key in llm_scores_by_date:
+            llm_scores = llm_scores_by_date[snapshot_key]
+            print(
+                f"[LLM] {index}/{total_snapshots} {snapshot_key} resumed enriched={len(llm_scores)}",
+                flush=True,
+            )
+            if llm_scores:
+                _apply_llm_to_snapshot(
+                    snapshot=snapshot,
+                    llm_scores=llm_scores,
+                    temporal_config=temporal_config,
+                    update_graph=snapshot_key == temporal_payload["analysis_config"]["as_of_date"],
+                )
+            continue
+        visible_chats = _filter_chats_as_of(chats, snapshot_date)
+        llm_input_chats = _select_llm_chats_for_enrichment(visible_chats, snapshot)
+        print(
+            f"[LLM] {index}/{total_snapshots} {snapshot_key} selected={len(llm_input_chats)}",
+            flush=True,
+        )
+        if not llm_input_chats:
+            llm_scores_by_date[snapshot_key] = {}
+            _save_json_mapping(progress_path, llm_scores_by_date)
+            continue
+        snapshot_scores: Dict[str, Dict[str, float]] = {}
+        scored_count = 0
+
+        def _on_chat_scored(chat_id: str, score: Dict[str, float], from_cache: bool) -> None:
+            nonlocal scored_count
+            snapshot_scores[chat_id] = score
+            llm_scores_by_date[snapshot_key] = dict(snapshot_scores)
+            scored_count += 1
+            if not from_cache:
+                _save_json_mapping(cache_path, llm_response_cache)
+            _save_json_mapping(progress_path, llm_scores_by_date)
+            if scored_count == len(llm_input_chats) or scored_count % 5 == 0:
+                source = "cache" if from_cache else "ollama"
+                print(
+                    f"[LLM] {index}/{total_snapshots} {snapshot_key} progress={scored_count}/{len(llm_input_chats)} last={source}",
+                    flush=True,
+                )
+
+        llm_scores = enrich_private_chat_scores(
+            llm_input_chats,
+            cache=llm_response_cache,
+            on_chat_scored=_on_chat_scored,
+        )
+        llm_scores_by_date[snapshot_key] = llm_scores
+        _save_json_mapping(cache_path, llm_response_cache)
+        _save_json_mapping(progress_path, llm_scores_by_date)
+        print(
+            f"[LLM] {index}/{total_snapshots} {snapshot_key} enriched={len(llm_scores)} cache_entries={len(llm_response_cache)}",
+            flush=True,
+        )
+        if llm_scores:
+            _apply_llm_to_snapshot(
+                snapshot=snapshot,
+                llm_scores=llm_scores,
+                temporal_config=temporal_config,
+                update_graph=snapshot_key == temporal_payload["analysis_config"]["as_of_date"],
+            )
+
+    snapshot_now = next(
+        (
+            snapshot
+            for snapshot in snapshot_series
+            if snapshot["as_of_date"] == temporal_payload["analysis_config"]["as_of_date"]
+        ),
+        None,
+    )
+    if snapshot_now is not None:
+        temporal_payload["snapshot_now"] = snapshot_now
+    temporal_payload["weekly_snapshots"] = [_compact_weekly_snapshot(snapshot) for snapshot in snapshot_series]
+    temporal_payload["network_timeseries"] = [snapshot["network_snapshot"] for snapshot in snapshot_series]
+    temporal_payload["relationship_timeseries"] = _build_relationship_timeseries(snapshot_series)
+    temporal_payload["person_reports"] = _build_person_reports(temporal_payload["relationship_timeseries"])
+    return llm_scores_by_date
+
+
+def _apply_llm_to_snapshot(
+    *,
+    snapshot: Dict[str, Any],
+    llm_scores: Dict[str, Dict[str, float]],
+    temporal_config: TemporalConfig,
+    update_graph: bool,
+) -> None:
+    as_of_date = date.fromisoformat(snapshot["as_of_date"])
+    relationships = snapshot.get("relationships", [])
+    enriched_peer_ids: set[str] = set()
+
+    for relationship in relationships:
+        llm_payload = llm_scores.get(relationship["chat_id"])
+        if not llm_payload:
+            continue
+        _merge_llm_into_relationship(relationship, llm_payload)
+        enriched_peer_ids.add(relationship["peer_id"])
+
+    relationships.sort(key=lambda item: item["pair"]["tie_strength_score"], reverse=True)
+    snapshot["top_relationships"] = relationships[:CURRENT_TIE_TOP_LIMIT]
+    snapshot["network_snapshot"] = _build_network_snapshot(relationships, as_of_date)
+
+    if enriched_peer_ids:
+        snapshot["network_snapshot"]["llm_enriched_relationships"] = len(enriched_peer_ids)
+
+    if update_graph and snapshot.get("graph_result") is not None:
+        current_graph = snapshot["graph_result"]
+        current_graph.edges = [
+            edge
+            for relationship in relationships
+            for edge in _relationship_to_edges(relationship, temporal_config)
+        ]
+        current_graph.summary["chat_count"] = len(relationships)
+        current_graph.summary["edge_count"] = len(current_graph.edges)
+        current_graph.summary["llm_enriched_relationships"] = len(enriched_peer_ids)
+
+
+def _merge_llm_into_relationship(relationship: Dict[str, Any], llm_payload: Dict[str, float]) -> None:
+    outbound = relationship["outbound"]
+    inbound = relationship["inbound"]
+    pair = relationship["pair"]
+
+    outbound["heuristic_warmth_score"] = outbound.get("warmth_score", 0.0)
+    inbound["heuristic_warmth_score"] = inbound.get("warmth_score", 0.0)
+    outbound["heuristic_tension_score"] = outbound.get("tension_score", 0.0)
+    inbound["heuristic_tension_score"] = inbound.get("tension_score", 0.0)
+
+    outbound["llm_warmth_score"] = round(float(llm_payload.get("self_to_peer_warmth", outbound["warmth_score"])), 4)
+    inbound["llm_warmth_score"] = round(float(llm_payload.get("peer_to_self_warmth", inbound["warmth_score"])), 4)
+    outbound["warmth_score"] = _blend_metric(outbound["heuristic_warmth_score"], outbound["llm_warmth_score"], 0.55)
+    inbound["warmth_score"] = _blend_metric(inbound["heuristic_warmth_score"], inbound["llm_warmth_score"], 0.55)
+
+    llm_tension = round(float(llm_payload.get("tension", 0.0)), 4)
+    pair["llm_mutuality_score"] = round(float(llm_payload.get("mutuality", pair.get("reciprocity", 0.0))), 4)
+    pair["llm_tension_score"] = llm_tension
+    outbound["tension_score"] = _blend_metric(outbound["heuristic_tension_score"], llm_tension, 0.35)
+    inbound["tension_score"] = _blend_metric(inbound["heuristic_tension_score"], llm_tension, 0.35)
+
+    pair["heuristic_mutual_warmth"] = pair.get("mutual_warmth", 0.0)
+    pair["mutual_warmth"] = round((float(outbound["warmth_score"]) + float(inbound["warmth_score"])) / 2.0, 4)
+
+    heuristic_closeness = float(pair.get("closeness_score", 0.0))
+    blended_closeness = (
+        float(pair.get("reciprocity", 0.0)) * 0.30
+        + float(pair["mutual_warmth"]) * 0.20
+        + float(pair.get("mutual_responsiveness", 0.0)) * 0.15
+        + float(pair.get("initiation_balance", 0.0)) * 0.15
+        + float(pair.get("continuity_score", 0.0)) * 0.10
+        + float(pair.get("recency_score", 0.0)) * 0.10
+    )
+    pair["heuristic_closeness_score"] = heuristic_closeness
+    pair["closeness_score"] = _blend_metric(blended_closeness, pair["llm_mutuality_score"], 0.15)
+    pair["tie_strength_score"] = round(pair["closeness_score"] * float(pair.get("evidence_score", 0.0)), 4)
+    pair["status"] = _classify_status(
+        current_30d=int(pair.get("messages_total_30d", 0)),
+        current_90d=int(pair.get("messages_total_90d", 0)),
+        prev_90d=int(pair.get("messages_total_prev_90d", 0)),
+        prev_365d=int(pair.get("messages_total_prev_365d", 0)),
+        reciprocity=float(pair.get("reciprocity", 0.0)),
+        closeness_score=float(pair["closeness_score"]),
+        silence_gap_days=pair.get("silence_gap_days"),
+    )
+    relationship["llm"] = llm_payload
+    relationship["drivers"] = _relationship_drivers(outbound, inbound, pair)
+
+
+def _apply_llm_to_timeseries(
+    relationship_timeseries: list[Dict[str, Any]],
+    relationships: list[Dict[str, Any]],
+    as_of_date: str,
+) -> None:
+    by_peer_id = {entry["peer_id"]: entry for entry in relationship_timeseries}
+
+    for relationship in relationships:
+        entry = by_peer_id.get(relationship["peer_id"])
+        if not entry or not entry.get("snapshots"):
+            continue
+        snapshot = entry["snapshots"][-1]
+        if snapshot.get("as_of_date") != as_of_date:
+            continue
+        snapshot["closeness_score"] = relationship["pair"]["closeness_score"]
+        snapshot["tie_strength_score"] = relationship["pair"]["tie_strength_score"]
+        snapshot["warmth_out"] = relationship["outbound"]["warmth_score"]
+        snapshot["warmth_in"] = relationship["inbound"]["warmth_score"]
+        snapshot["reciprocity"] = relationship["pair"]["reciprocity"]
+        snapshot["status"] = relationship["pair"]["status"]
+
+
+def _apply_llm_to_person_reports(
+    person_reports: list[Dict[str, Any]],
+    relationship_timeseries: list[Dict[str, Any]],
+) -> None:
+    timeseries_by_peer = {entry["peer_id"]: entry for entry in relationship_timeseries}
+
+    for report in person_reports:
+        series = timeseries_by_peer.get(report["peer_id"])
+        if not series or not series.get("snapshots"):
+            continue
+        snapshots = series["snapshots"]
+        current = snapshots[-1]
+        previous = snapshots[-2] if len(snapshots) >= 2 else None
+        yearly_reference = snapshots[-53] if len(snapshots) >= 53 else None
+        report["current_snapshot"] = current
+        report["delta_vs_previous_week"] = _snapshot_delta(current, previous)
+        report["delta_vs_previous_year"] = _snapshot_delta(current, yearly_reference)
+        report["trend"] = _classify_trend(report["delta_vs_previous_week"])
+
+
+def _apply_llm_to_network_snapshots(
+    network_timeseries: list[Dict[str, Any]],
+    weekly_snapshots: list[Dict[str, Any]],
+    snapshot_now: Dict[str, Any],
+) -> None:
+    as_of_date = snapshot_now["as_of_date"]
+    network_snapshot = snapshot_now["network_snapshot"]
+
+    for item in network_timeseries:
+        if item.get("as_of_date") == as_of_date:
+            item.update(network_snapshot)
+
+    for index, item in enumerate(weekly_snapshots):
+        if item.get("as_of_date") == as_of_date:
+            weekly_snapshots[index] = _compact_weekly_snapshot(snapshot_now)
+
+
+def _blend_metric(heuristic_value: float, llm_value: float, llm_weight: float) -> float:
+    llm_weight = max(0.0, min(1.0, llm_weight))
+    heuristic_weight = 1.0 - llm_weight
+    return round((float(heuristic_value) * heuristic_weight) + (float(llm_value) * llm_weight), 4)
+
+
+def _load_json_mapping(path: Path) -> Dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _save_json_mapping(path: Path, payload: Dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = path.with_suffix(path.suffix + ".tmp")
+    temp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    temp_path.replace(path)
