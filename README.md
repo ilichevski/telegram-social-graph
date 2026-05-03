@@ -24,6 +24,18 @@ This repository is released under the [Unlicense](./LICENSE). Anyone can use it 
 - produces `graph.json`, `summary.json`, `relationship_timeseries.json`, and `report.html`
 - optionally enriches chat warmth with a local `Ollama` model
 
+## Preview
+
+Pipeline overview:
+
+![Pipeline overview](docs/images/pipeline-overview.svg)
+
+Example report screenshots:
+
+![Relationship Snapshot overview](docs/images/report-overview.jpg)
+
+![Relationship Snapshot detail](docs/images/report-detail.jpg)
+
 ## Requirements
 
 - macOS or Linux
@@ -99,6 +111,18 @@ Open:
 artifacts/run-latest/report.html
 ```
 
+## How to read the report
+
+Start here:
+
+- [docs/HOW_TO_READ_REPORT.md](docs/HOW_TO_READ_REPORT.md)
+
+Useful companion docs:
+
+- [docs/OUTPUT_FILES.md](docs/OUTPUT_FILES.md)
+- [docs/FAQ.md](docs/FAQ.md)
+- [CONTRIBUTING.md](CONTRIBUTING.md)
+
 ## Optional: local LLM enrichment
 
 If you want the service to score warmth with a local model, install `Ollama` first.
@@ -163,6 +187,10 @@ After a run, the output directory contains:
   per-person timeseries
 - `person_reports.json`
   per-person snapshot summary
+
+Full file guide:
+
+- [docs/OUTPUT_FILES.md](docs/OUTPUT_FILES.md)
 
 ## Run with a custom export path
 
@@ -271,6 +299,12 @@ Check whether the run finished successfully and inspect:
 
 Open `report.html` in a normal browser window, not a terminal preview.
 
+## FAQ
+
+Common questions:
+
+- [docs/FAQ.md](docs/FAQ.md)
+
 ## Developer notes
 
 Tests:
@@ -285,4 +319,5 @@ Project layout:
 src/social_graph_service/
 tests/
 scripts/
+docs/
 ```
