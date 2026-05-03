@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict
 from datetime import date, datetime, time, timezone
 import json
+import math
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -14,11 +15,16 @@ from .temporal_analysis import (
     CURRENT_TIE_TOP_LIMIT,
     TemporalConfig,
     _build_network_snapshot,
+    _directional_bond_index,
+    _directional_warmth_index,
     _build_person_reports,
     _build_relationship_timeseries,
     _classify_status,
     _classify_trend,
     _compact_weekly_snapshot,
+    _integrated_color_score,
+    _pair_bond_index,
+    _pair_warmth_index,
     _relationship_drivers,
     _relationship_to_edges,
     _snapshot_delta,
@@ -64,8 +70,8 @@ def run_analysis(
     effective_as_of = date.fromisoformat(temporal_payload["analysis_config"]["as_of_date"])
     visible_chats = _filter_chats_as_of(chats, effective_as_of)
 
-    llm_scores: Dict[str, Dict[str, float]] = {}
-    llm_scores_by_date: Dict[str, Dict[str, Dict[str, float]]] = {}
+    llm_scores: Dict[str, Dict[str, Any]] = {}
+    llm_scores_by_date: Dict[str, Dict[str, Dict[str, Any]]] = {}
     if with_llm:
         snapshot_series = temporal_payload.get("snapshot_series") or []
         if snapshot_series:
@@ -157,12 +163,12 @@ def _enrich_snapshot_series(
     temporal_payload: Dict[str, Any],
     temporal_config: TemporalConfig,
     output_dir: Path,
-) -> Dict[str, Dict[str, Dict[str, float]]]:
+) -> Dict[str, Dict[str, Dict[str, Any]]]:
     output_dir.mkdir(parents=True, exist_ok=True)
     cache_path = output_dir / ".llm-cache.json"
     progress_path = output_dir / ".llm-progress.json"
-    llm_scores_by_date = _load_json_mapping(progress_path)
-    llm_response_cache = _load_json_mapping(cache_path)
+    llm_scores_by_date: Dict[str, Dict[str, Dict[str, Any]]] = _load_json_mapping(progress_path)
+    llm_response_cache: Dict[str, Dict[str, Any]] = _load_json_mapping(cache_path)
     total_snapshots = len(snapshot_series)
 
     for index, snapshot in enumerate(snapshot_series, start=1):
@@ -192,10 +198,10 @@ def _enrich_snapshot_series(
             llm_scores_by_date[snapshot_key] = {}
             _save_json_mapping(progress_path, llm_scores_by_date)
             continue
-        snapshot_scores: Dict[str, Dict[str, float]] = {}
+        snapshot_scores: Dict[str, Dict[str, Any]] = {}
         scored_count = 0
 
-        def _on_chat_scored(chat_id: str, score: Dict[str, float], from_cache: bool) -> None:
+        def _on_chat_scored(chat_id: str, score: Dict[str, Any], from_cache: bool) -> None:
             nonlocal scored_count
             snapshot_scores[chat_id] = score
             llm_scores_by_date[snapshot_key] = dict(snapshot_scores)
@@ -250,7 +256,7 @@ def _enrich_snapshot_series(
 def _apply_llm_to_snapshot(
     *,
     snapshot: Dict[str, Any],
-    llm_scores: Dict[str, Dict[str, float]],
+    llm_scores: Dict[str, Dict[str, Any]],
     temporal_config: TemporalConfig,
     update_graph: bool,
 ) -> None:
@@ -284,7 +290,7 @@ def _apply_llm_to_snapshot(
         current_graph.summary["llm_enriched_relationships"] = len(enriched_peer_ids)
 
 
-def _merge_llm_into_relationship(relationship: Dict[str, Any], llm_payload: Dict[str, float]) -> None:
+def _merge_llm_into_relationship(relationship: Dict[str, Any], llm_payload: Dict[str, Any]) -> None:
     outbound = relationship["outbound"]
     inbound = relationship["inbound"]
     pair = relationship["pair"]
@@ -299,14 +305,121 @@ def _merge_llm_into_relationship(relationship: Dict[str, Any], llm_payload: Dict
     outbound["warmth_score"] = _blend_metric(outbound["heuristic_warmth_score"], outbound["llm_warmth_score"], 0.55)
     inbound["warmth_score"] = _blend_metric(inbound["heuristic_warmth_score"], inbound["llm_warmth_score"], 0.55)
 
+    outbound["heuristic_support_score"] = outbound.get("support_score", 0.0)
+    inbound["heuristic_support_score"] = inbound.get("support_score", 0.0)
+    outbound["llm_support_score"] = round(
+        float(llm_payload.get("self_to_peer_support", outbound["heuristic_support_score"])),
+        4,
+    )
+    inbound["llm_support_score"] = round(
+        float(llm_payload.get("peer_to_self_support", inbound["heuristic_support_score"])),
+        4,
+    )
+    outbound["support_score"] = _blend_metric(outbound["heuristic_support_score"], outbound["llm_support_score"], 0.45)
+    inbound["support_score"] = _blend_metric(inbound["heuristic_support_score"], inbound["llm_support_score"], 0.45)
+
+    outbound["heuristic_formality_score"] = outbound.get("formality_score", 0.0)
+    inbound["heuristic_formality_score"] = inbound.get("formality_score", 0.0)
+    outbound["llm_formality_score"] = round(
+        float(llm_payload.get("self_to_peer_formality", outbound["heuristic_formality_score"])),
+        4,
+    )
+    inbound["llm_formality_score"] = round(
+        float(llm_payload.get("peer_to_self_formality", inbound["heuristic_formality_score"])),
+        4,
+    )
+    outbound["formality_score"] = _blend_metric(outbound["heuristic_formality_score"], outbound["llm_formality_score"], 0.40)
+    inbound["formality_score"] = _blend_metric(inbound["heuristic_formality_score"], inbound["llm_formality_score"], 0.40)
+
+    llm_depth = round(float(llm_payload.get("depth", pair.get("depth_score", 0.0))), 4)
+    outbound["heuristic_depth_score"] = outbound.get("depth_score", 0.0)
+    inbound["heuristic_depth_score"] = inbound.get("depth_score", 0.0)
+    outbound["depth_score"] = _blend_metric(outbound["heuristic_depth_score"], llm_depth, 0.24)
+    inbound["depth_score"] = _blend_metric(inbound["heuristic_depth_score"], llm_depth, 0.24)
+
+    pair["heuristic_engagement_out"] = pair.get("engagement_out", 0.0)
+    pair["heuristic_engagement_in"] = pair.get("engagement_in", 0.0)
+    pair["llm_engagement_out"] = round(
+        float(llm_payload.get("self_to_peer_engagement", pair["heuristic_engagement_out"])),
+        4,
+    )
+    pair["llm_engagement_in"] = round(
+        float(llm_payload.get("peer_to_self_engagement", pair["heuristic_engagement_in"])),
+        4,
+    )
+    pair["engagement_out"] = _blend_metric(pair["heuristic_engagement_out"], pair["llm_engagement_out"], 0.28)
+    pair["engagement_in"] = _blend_metric(pair["heuristic_engagement_in"], pair["llm_engagement_in"], 0.28)
+
     llm_tension = round(float(llm_payload.get("tension", 0.0)), 4)
     pair["llm_mutuality_score"] = round(float(llm_payload.get("mutuality", pair.get("reciprocity", 0.0))), 4)
     pair["llm_tension_score"] = llm_tension
+    pair["llm_depth_score"] = llm_depth
+    pair["llm_confidence_score"] = round(
+        float(llm_payload.get("confidence", pair.get("confidence_score", 0.0))),
+        4,
+    )
+    if "reason_codes" in llm_payload:
+        pair["llm_reason_codes"] = llm_payload["reason_codes"]
     outbound["tension_score"] = _blend_metric(outbound["heuristic_tension_score"], llm_tension, 0.35)
     inbound["tension_score"] = _blend_metric(inbound["heuristic_tension_score"], llm_tension, 0.35)
 
     pair["heuristic_mutual_warmth"] = pair.get("mutual_warmth", 0.0)
     pair["mutual_warmth"] = round((float(outbound["warmth_score"]) + float(inbound["warmth_score"])) / 2.0, 4)
+    pair["mutual_tension"] = round((float(outbound["tension_score"]) + float(inbound["tension_score"])) / 2.0, 4)
+    pair["mutual_support"] = round((float(outbound["support_score"]) + float(inbound["support_score"])) / 2.0, 4)
+    pair["mutual_formality"] = round((float(outbound["formality_score"]) + float(inbound["formality_score"])) / 2.0, 4)
+    pair["depth_score"] = round(
+        min(
+            1.0,
+            _blend_metric(float(pair.get("depth_score", 0.0)), llm_depth, 0.30),
+        ),
+        4,
+    )
+    outbound["warmth_index"] = _directional_warmth_index(
+        warmth=float(outbound.get("warmth_score", 0.0)),
+        support=float(outbound.get("support_score", 0.0)),
+        tension=float(outbound.get("tension_score", 0.0)),
+        formality=float(outbound.get("formality_score", 0.0)),
+        depth=float(outbound.get("depth_score", 0.0)),
+        responsiveness=float(outbound.get("responsiveness_score") or 0.0),
+    )
+    inbound["warmth_index"] = _directional_warmth_index(
+        warmth=float(inbound.get("warmth_score", 0.0)),
+        support=float(inbound.get("support_score", 0.0)),
+        tension=float(inbound.get("tension_score", 0.0)),
+        formality=float(inbound.get("formality_score", 0.0)),
+        depth=float(inbound.get("depth_score", 0.0)),
+        responsiveness=float(inbound.get("responsiveness_score") or 0.0),
+    )
+    pair["warmth_index_out"] = float(outbound["warmth_index"])
+    pair["warmth_index_in"] = float(inbound["warmth_index"])
+    pair["warmth_index"] = _pair_warmth_index(pair["warmth_index_out"], pair["warmth_index_in"])
+    pair["bond_index_out"] = _directional_bond_index(
+        warmth_index=float(pair["warmth_index_out"]),
+        engagement=float(pair.get("engagement_out", 0.0)),
+        responsiveness=float(outbound.get("responsiveness_score") or 0.0),
+        depth=float(outbound.get("depth_score", 0.0)),
+        support=float(outbound.get("support_score", 0.0)),
+        formality=float(outbound.get("formality_score", 0.0)),
+        reciprocity=float(pair.get("reciprocity", 0.0)),
+        stability=float(pair.get("stability_score", pair.get("continuity_score", 0.0))),
+    )
+    pair["bond_index_in"] = _directional_bond_index(
+        warmth_index=float(pair["warmth_index_in"]),
+        engagement=float(pair.get("engagement_in", 0.0)),
+        responsiveness=float(inbound.get("responsiveness_score") or 0.0),
+        depth=float(inbound.get("depth_score", 0.0)),
+        support=float(inbound.get("support_score", 0.0)),
+        formality=float(inbound.get("formality_score", 0.0)),
+        reciprocity=float(pair.get("reciprocity", 0.0)),
+        stability=float(pair.get("stability_score", pair.get("continuity_score", 0.0))),
+    )
+    pair["bond_index"] = _pair_bond_index(
+        pair["bond_index_out"],
+        pair["bond_index_in"],
+        float(pair.get("reciprocity", 0.0)),
+        float(pair.get("stability_score", pair.get("continuity_score", 0.0))),
+    )
 
     heuristic_closeness = float(pair.get("closeness_score", 0.0))
     blended_closeness = (
@@ -320,6 +433,34 @@ def _merge_llm_into_relationship(relationship: Dict[str, Any], llm_payload: Dict
     pair["heuristic_closeness_score"] = heuristic_closeness
     pair["closeness_score"] = _blend_metric(blended_closeness, pair["llm_mutuality_score"], 0.15)
     pair["tie_strength_score"] = round(pair["closeness_score"] * float(pair.get("evidence_score", 0.0)), 4)
+    pair["integrated_color_score"] = _integrated_color_score(
+        float(pair.get("warmth_index", 0.0)),
+        float(pair.get("bond_index", 0.0)),
+    )
+    response_coverage = 0.0
+    if outbound.get("responsiveness_score") is not None:
+        response_coverage += 0.5
+    if inbound.get("responsiveness_score") is not None:
+        response_coverage += 0.5
+    messages_total = int(pair.get("messages_total_90d", 0))
+    weighted_messages_total = float(pair.get("weighted_messages_total", 0.0))
+    pair["confidence_score"] = round(
+        min(
+            1.0,
+            (min(1.0, math.log1p(messages_total) / math.log1p(160.0)) if messages_total > 0 else 0.0) * 0.45
+            + float(pair.get("continuity_score", 0.0)) * 0.18
+            + min(1.0, float(pair.get("reciprocity", 0.0)) + 0.08) * 0.12
+            + float(pair.get("depth_score", 0.0)) * 0.10
+            + response_coverage * 0.10
+            + min(1.0, weighted_messages_total / 120.0) * 0.05,
+        ),
+        4,
+    )
+    pair["confidence_score"] = _blend_metric(
+        float(pair["confidence_score"]),
+        float(pair.get("llm_confidence_score", pair["confidence_score"])),
+        0.12,
+    )
     pair["status"] = _classify_status(
         current_30d=int(pair.get("messages_total_30d", 0)),
         current_90d=int(pair.get("messages_total_90d", 0)),
@@ -351,6 +492,32 @@ def _apply_llm_to_timeseries(
         snapshot["tie_strength_score"] = relationship["pair"]["tie_strength_score"]
         snapshot["warmth_out"] = relationship["outbound"]["warmth_score"]
         snapshot["warmth_in"] = relationship["inbound"]["warmth_score"]
+        snapshot["tension_out"] = relationship["outbound"]["tension_score"]
+        snapshot["tension_in"] = relationship["inbound"]["tension_score"]
+        snapshot["support_out"] = relationship["outbound"].get("support_score", 0.0)
+        snapshot["support_in"] = relationship["inbound"].get("support_score", 0.0)
+        snapshot["formality_out"] = relationship["outbound"].get("formality_score", 0.0)
+        snapshot["formality_in"] = relationship["inbound"].get("formality_score", 0.0)
+        snapshot["warmth_index_out"] = relationship["pair"].get("warmth_index_out", snapshot.get("warmth_index_out", 0.0))
+        snapshot["warmth_index_in"] = relationship["pair"].get("warmth_index_in", snapshot.get("warmth_index_in", 0.0))
+        snapshot["warmth_index"] = relationship["pair"].get("warmth_index", snapshot.get("warmth_index", 0.0))
+        snapshot["engagement_out"] = relationship["pair"].get("engagement_out", snapshot.get("engagement_out", 0.0))
+        snapshot["engagement_in"] = relationship["pair"].get("engagement_in", snapshot.get("engagement_in", 0.0))
+        snapshot["responsiveness_out"] = relationship["outbound"].get("responsiveness_score") or 0.0
+        snapshot["responsiveness_in"] = relationship["inbound"].get("responsiveness_score") or 0.0
+        snapshot["stability_score"] = relationship["pair"].get("stability_score", snapshot.get("stability_score", 0.0))
+        snapshot["depth_score"] = relationship["pair"].get("depth_score", snapshot.get("depth_score", 0.0))
+        snapshot["bond_index_out"] = relationship["pair"].get("bond_index_out", snapshot.get("bond_index_out", 0.0))
+        snapshot["bond_index_in"] = relationship["pair"].get("bond_index_in", snapshot.get("bond_index_in", 0.0))
+        snapshot["bond_index"] = relationship["pair"].get("bond_index", snapshot.get("bond_index", 0.0))
+        snapshot["mutual_tension"] = relationship["pair"].get("mutual_tension", snapshot.get("mutual_tension", 0.0))
+        snapshot["mutual_support"] = relationship["pair"].get("mutual_support", snapshot.get("mutual_support", 0.0))
+        snapshot["mutual_formality"] = relationship["pair"].get("mutual_formality", snapshot.get("mutual_formality", 0.0))
+        snapshot["integrated_color_score"] = relationship["pair"].get(
+            "integrated_color_score",
+            snapshot.get("integrated_color_score", 0.0),
+        )
+        snapshot["confidence_score"] = relationship["pair"].get("confidence_score", snapshot.get("confidence_score", 0.0))
         snapshot["reciprocity"] = relationship["pair"]["reciprocity"]
         snapshot["status"] = relationship["pair"]["status"]
 

@@ -64,6 +64,13 @@ def test_llm_enrichment_updates_current_snapshot_outputs() -> None:
 
     baseline_warmth = snapshot_now["relationships"][0]["outbound"]["warmth_score"]
     baseline_edge_warmth = current_graph.edges[0].metrics["warmth"]
+    baseline_integrated_color = snapshot_now["relationships"][0]["pair"]["integrated_color_score"]
+    baseline_confidence = snapshot_now["relationships"][0]["pair"]["confidence_score"]
+    baseline_warmth_index = snapshot_now["relationships"][0]["pair"]["warmth_index"]
+    baseline_bond_index = snapshot_now["relationships"][0]["pair"]["bond_index"]
+    baseline_support = snapshot_now["relationships"][0]["outbound"]["support_score"]
+    baseline_formality = snapshot_now["relationships"][0]["inbound"]["formality_score"]
+    baseline_depth = snapshot_now["relationships"][0]["pair"]["depth_score"]
 
     _apply_llm_to_snapshot(
         snapshot=snapshot_now,
@@ -71,8 +78,17 @@ def test_llm_enrichment_updates_current_snapshot_outputs() -> None:
             "chat-1": {
                 "self_to_peer_warmth": 0.9,
                 "peer_to_self_warmth": 0.85,
+                "self_to_peer_support": 0.82,
+                "peer_to_self_support": 0.8,
+                "self_to_peer_formality": 0.1,
+                "peer_to_self_formality": 0.12,
+                "depth": 0.78,
+                "self_to_peer_engagement": 0.76,
+                "peer_to_self_engagement": 0.74,
                 "mutuality": 0.88,
                 "tension": 0.1,
+                "confidence": 0.83,
+                "reason_codes": ["supportive_language", "recent_reciprocity"],
             }
         },
         temporal_config=config,
@@ -83,6 +99,14 @@ def test_llm_enrichment_updates_current_snapshot_outputs() -> None:
     assert relationship["outbound"]["warmth_score"] > baseline_warmth
     assert relationship["llm"]["mutuality"] == 0.88
     assert current_graph.edges[0].metrics["warmth"] > baseline_edge_warmth
+    assert relationship["pair"]["integrated_color_score"] > baseline_integrated_color
+    assert relationship["pair"]["confidence_score"] >= baseline_confidence
+    assert relationship["pair"]["warmth_index"] > baseline_warmth_index
+    assert relationship["pair"]["bond_index"] >= baseline_bond_index
+    assert relationship["outbound"]["support_score"] > baseline_support
+    assert relationship["inbound"]["formality_score"] <= baseline_formality
+    assert relationship["pair"]["depth_score"] >= baseline_depth
+    assert relationship["pair"]["llm_reason_codes"] == ["supportive_language", "recent_reciprocity"]
 
 
 def test_enrich_snapshot_series_resumes_from_progress(tmp_path, monkeypatch) -> None:

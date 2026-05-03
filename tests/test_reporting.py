@@ -28,3 +28,9 @@ def test_write_html_report_creates_readable_file(tmp_path) -> None:
     content = output_path.read_text(encoding="utf-8")
     assert "Relationship Snapshot" in content
     assert "Selected Relationship" in content
+    assert "Relationship Profile" in content
+    assert "Confidence" in content
+    assert "You → support" in content
+    assert "You → formality" in content
+    assert "Bond index" in content
+    assert "Outer ring: Warmth" in content

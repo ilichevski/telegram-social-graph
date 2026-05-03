@@ -44,6 +44,14 @@ def test_temporal_snapshot_tracks_as_of_date_and_status() -> None:
     assert relationship["pair"]["messages_total_90d"] == 4
     assert relationship["pair"]["status"] in {"active_mutual", "active_asymmetric"}
     assert relationship["outbound"]["messages_count_30d"] == 1
+    assert 0 <= relationship["outbound"]["depth_score"] <= 1
+    assert 0 <= relationship["outbound"]["support_score"] <= 1
+    assert 0 <= relationship["outbound"]["formality_score"] <= 1
+    assert 0 <= relationship["pair"]["stability_score"] <= 1
+    assert 0 <= relationship["pair"]["integrated_color_score"] <= 1
+    assert 0 <= relationship["pair"]["confidence_score"] <= 1
+    assert 0 <= relationship["pair"]["warmth_index"] <= 1
+    assert 0 <= relationship["pair"]["bond_index"] <= 1
 
 
 def test_temporal_analysis_builds_weekly_timeseries() -> None:
@@ -72,3 +80,30 @@ def test_temporal_analysis_builds_weekly_timeseries() -> None:
     assert len(payload["weekly_snapshots"]) >= 4
     assert len(payload["relationship_timeseries"]) == 1
     assert payload["person_reports"][0]["current_snapshot"]["status"]
+    snapshot = payload["relationship_timeseries"][0]["snapshots"][-1]
+    assert "engagement_out" in snapshot
+    assert "responsiveness_in" in snapshot
+    assert "depth_score" in snapshot
+    assert "confidence_score" in snapshot
+    assert "support_out" in snapshot
+    assert "formality_in" in snapshot
+    assert "warmth_index" in snapshot
+    assert "bond_index" in snapshot
+
+
+def test_support_and_formality_scores_are_detectable() -> None:
+    chat = Chat(
+        chat_id="chat-1",
+        name="Alice",
+        chat_type="private",
+        messages=[
+            _message("1", "self", "Me", datetime(2026, 4, 28, 10, 0, tzinfo=timezone.utc), "держись, я рядом и помогу если что", True),
+            _message("2", "alice", "Alice", datetime(2026, 4, 28, 10, 5, tzinfo=timezone.utc), "Здравствуйте. Добрый день, благодарю, пожалуйста подтвердите", False),
+        ],
+    )
+
+    payload = analyze_temporal([chat], TemporalConfig(as_of_date=date(2026, 5, 2)))
+    relationship = payload["snapshot_now"]["relationships"][0]
+
+    assert relationship["outbound"]["support_score"] >= 0.45
+    assert relationship["inbound"]["formality_score"] >= 0.35

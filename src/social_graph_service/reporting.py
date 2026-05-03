@@ -23,16 +23,16 @@ def render_html_report(result: GraphResult, run_summary: Dict[str, Any]) -> str:
   <title>Relationship Snapshot</title>
   <style>
     :root {{
-      --bg: #f5efe6;
-      --bg-soft: #fbf7f1;
-      --ink: #1f1a17;
-      --muted: #6d665e;
-      --line: #ddd2c4;
-      --card: rgba(255, 251, 245, 0.9);
-      --shadow: 0 18px 44px rgba(61, 45, 30, 0.1);
-      --green: #1e8d55;
-      --red: #bf4b44;
-      --amber: #d29d26;
+      --bg: #f6f2ec;
+      --bg-soft: #fbfaf8;
+      --ink: #201814;
+      --muted: #6f6761;
+      --line: #ddd6cf;
+      --card: rgba(255, 255, 255, 0.88);
+      --shadow: 0 16px 40px rgba(53, 40, 24, 0.08);
+      --green: #2b9d61;
+      --red: #c15b57;
+      --amber: #d6a545;
       --dark: #241d19;
     }}
     * {{ box-sizing: border-box; }}
@@ -41,31 +41,31 @@ def render_html_report(result: GraphResult, run_summary: Dict[str, Any]) -> str:
       color: var(--ink);
       font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       background:
-        radial-gradient(circle at top left, rgba(255,255,255,0.85) 0%, transparent 34%),
-        linear-gradient(180deg, #ede4d7 0%, var(--bg) 100%);
+        radial-gradient(circle at top left, rgba(255,255,255,0.82) 0%, transparent 36%),
+        linear-gradient(180deg, #f7f3ee 0%, var(--bg) 100%);
     }}
     .page {{
-      max-width: 1520px;
+      max-width: none;
       margin: 0 auto;
-      padding: 28px 18px 52px;
+      padding: 22px 24px 48px;
     }}
     .hero {{
       display: grid;
-      gap: 10px;
-      margin-bottom: 22px;
+      gap: 8px;
+      margin-bottom: 18px;
     }}
     h1 {{
       margin: 0;
-      font-size: clamp(34px, 5vw, 64px);
-      line-height: 0.92;
-      letter-spacing: -0.05em;
+      font-size: clamp(30px, 3.2vw, 42px);
+      line-height: 0.96;
+      letter-spacing: -0.04em;
     }}
     .lede {{
       margin: 0;
-      max-width: 980px;
+      max-width: 1040px;
       color: var(--muted);
-      font-size: 18px;
-      line-height: 1.6;
+      font-size: 15px;
+      line-height: 1.65;
     }}
     .metrics {{
       display: grid;
@@ -219,8 +219,8 @@ def render_html_report(result: GraphResult, run_summary: Dict[str, Any]) -> str:
       border-radius: 22px;
       border: 1px solid rgba(221, 210, 196, 0.9);
       background:
-        radial-gradient(circle at center, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0.28) 65%, transparent 100%),
-        linear-gradient(180deg, rgba(255,255,255,0.25), rgba(255,255,255,0.08));
+        radial-gradient(circle at center, rgba(255,255,255,0.82) 0%, rgba(255,255,255,0.3) 65%, transparent 100%),
+        linear-gradient(180deg, rgba(255,255,255,0.22), rgba(255,255,255,0.08));
     }}
     .bubble-button {{
       position: relative;
@@ -236,20 +236,29 @@ def render_html_report(result: GraphResult, run_summary: Dict[str, Any]) -> str:
       border: 2px solid rgba(255,255,255,0.8);
       box-shadow: 0 14px 32px rgba(44, 33, 21, 0.14);
       isolation: isolate;
+      background: rgba(255,255,255,0.18);
     }}
     .bubble.selected {{
       border-color: var(--dark);
       box-shadow: 0 0 0 5px rgba(36, 29, 25, 0.14), 0 18px 42px rgba(44, 33, 21, 0.18);
     }}
+    .ring {{
+      position: absolute;
+      inset: 0;
+      border-radius: 999px;
+    }}
+    .ring.bond-ring {{
+      inset: 10%;
+    }}
     .bubble-core {{
       position: absolute;
-      inset: 18%;
+      inset: 20%;
       display: grid;
       place-items: center;
       text-align: center;
       padding: 8px;
       border-radius: 999px;
-      background: rgba(255, 250, 243, 0.84);
+      background: rgba(250, 248, 244, 0.9);
       border: 1px solid rgba(255,255,255,0.7);
       color: var(--dark);
     }}
@@ -381,6 +390,52 @@ def render_html_report(result: GraphResult, run_summary: Dict[str, Any]) -> str:
       text-transform: uppercase;
       letter-spacing: 0.08em;
     }}
+    .profile-grid {{
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 16px;
+    }}
+    .scale-card {{
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: rgba(255,255,255,0.55);
+      padding: 12px;
+    }}
+    .scale-card .label {{
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }}
+    .scale-card .value-row {{
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 8px;
+      margin-top: 6px;
+    }}
+    .scale-card .value {{
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+    }}
+    .scale-card .sub {{
+      font-size: 12px;
+      color: var(--muted);
+    }}
+    .scale-bar {{
+      margin-top: 10px;
+      height: 9px;
+      border-radius: 999px;
+      background: rgba(31, 26, 23, 0.08);
+      overflow: hidden;
+    }}
+    .scale-bar-fill {{
+      height: 100%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #d56f68 0%, #e0bf60 48%, #79c487 100%);
+    }}
     .empty {{
       border: 1px dashed var(--line);
       border-radius: 16px;
@@ -429,7 +484,7 @@ def render_html_report(result: GraphResult, run_summary: Dict[str, Any]) -> str:
   <div class="page">
     <section class="hero">
       <h1>Relationship Snapshot</h1>
-      <p class="lede">Each bubble is a current relationship. The left half shows how warm your side looks, and the right half shows how warm the other side looks. Greener means warmer, redder means colder. Arrows show whether communication volume is rising, falling, or holding steady versus the recent baseline.</p>
+      <p class="lede">Each bubble shows two concentric directional rings. The outer ring is warmth, the inner ring is bond. On each ring, the left half is your side and the right half is the other side. Greener means warmer or stronger; redder means colder or weaker. Open a relationship to inspect the full profile behind those rings.</p>
     </section>
 
     <section class="metrics" id="metrics"></section>
@@ -441,6 +496,7 @@ def render_html_report(result: GraphResult, run_summary: Dict[str, Any]) -> str:
             <span class="toolbar-label">Sort</span>
             <button data-sort="volume" class="active">Volume</button>
             <button data-sort="warmth">Warmth</button>
+            <button data-sort="bond">Bond</button>
             <button data-sort="change">Change</button>
           </div>
           <div class="toolbar-group segmented" id="filter-switch">
@@ -452,8 +508,8 @@ def render_html_report(result: GraphResult, run_summary: Dict[str, Any]) -> str:
           </div>
           <div class="toolbar-group">
             <span class="toolbar-label">Top N</span>
-            <input type="range" id="top-n-range" min="12" max="120" value="48" step="4">
-            <span id="top-n-value">48</span>
+            <input type="range" id="top-n-range" min="10" max="120" value="15" step="1">
+            <span id="top-n-value">15</span>
           </div>
         </div>
 
@@ -464,9 +520,11 @@ def render_html_report(result: GraphResult, run_summary: Dict[str, Any]) -> str:
 
         <div class="board-shell">
           <div class="legend">
-            <div class="legend-chip"><span class="legend-swatch" style="background:#77c78c"></span><span>warmer</span></div>
-            <div class="legend-chip"><span class="legend-swatch" style="background:#f0c763"></span><span>neutral</span></div>
-            <div class="legend-chip"><span class="legend-swatch" style="background:#e07d78"></span><span>colder</span></div>
+            <div class="legend-chip"><span class="legend-swatch" style="background:#77c78c"></span><span>stronger / warmer</span></div>
+            <div class="legend-chip"><span class="legend-swatch" style="background:#f0c763"></span><span>mixed</span></div>
+            <div class="legend-chip"><span class="legend-swatch" style="background:#e07d78"></span><span>weaker / colder</span></div>
+            <div class="legend-chip"><span>Outer ring: Warmth</span></div>
+            <div class="legend-chip"><span>Inner ring: Bond</span></div>
             <div class="legend-chip"><span>Volume:</span></div>
             <div class="legend-chip"><span>↑↑ strong growth</span></div>
             <div class="legend-chip"><span>↑ moderate growth</span></div>
@@ -488,6 +546,8 @@ def render_html_report(result: GraphResult, run_summary: Dict[str, Any]) -> str:
         <div class="detail-pills" id="detail-pills"></div>
         <div class="detail-bubble-wrap" id="detail-bubble-wrap"></div>
         <div class="detail-grid" id="detail-grid"></div>
+        <div class="comparison-title">Relationship Profile</div>
+        <div class="profile-grid" id="profile-grid"></div>
         <div class="comparison-title">Volume Delta</div>
         <div class="baseline-grid" id="volume-grid"></div>
         <div class="comparison-title">Warmth Index</div>
@@ -508,7 +568,7 @@ def render_html_report(result: GraphResult, run_summary: Dict[str, Any]) -> str:
       selectedPeerId: null,
       sort: 'volume',
       filter: 'all',
-      topN: 48,
+      topN: 15,
     }};
 
     const metricsEl = document.getElementById('metrics');
@@ -520,6 +580,7 @@ def render_html_report(result: GraphResult, run_summary: Dict[str, Any]) -> str:
     const detailPills = document.getElementById('detail-pills');
     const detailBubbleWrap = document.getElementById('detail-bubble-wrap');
     const detailGrid = document.getElementById('detail-grid');
+    const profileGrid = document.getElementById('profile-grid');
     const volumeGrid = document.getElementById('volume-grid');
     const warmthGrid = document.getElementById('warmth-grid');
     const topNRange = document.getElementById('top-n-range');
@@ -590,7 +651,11 @@ def render_html_report(result: GraphResult, run_summary: Dict[str, Any]) -> str:
     }}
 
     function meanWarmth(snapshot) {{
-      return ((snapshot?.warmth_out || 0) + (snapshot?.warmth_in || 0)) / 2;
+      return ((snapshot?.warmth_index_out || snapshot?.warmth_out || 0) + (snapshot?.warmth_index_in || snapshot?.warmth_in || 0)) / 2;
+    }}
+
+    function integratedColor(snapshot) {{
+      return snapshot?.integrated_color_score ?? (((snapshot?.warmth_index || 0) + (snapshot?.bond_index || 0)) / 2);
     }}
 
     function trendSymbol(deltaRatio) {{
@@ -615,18 +680,20 @@ def render_html_report(result: GraphResult, run_summary: Dict[str, Any]) -> str:
       return `hsl(${{hue}} 66% 68%)`;
     }}
 
-    function buildWarmthNormalizer(rows) {{
-      const values = rows.flatMap((row) => [row.snapshot.warmth_out || 0, row.snapshot.warmth_in || 0]);
+    function buildScoreNormalizer(rows, getter) {{
+      const values = rows
+        .map((row) => Number(getter(row)) || 0)
+        .filter((value) => Number.isFinite(value));
       if (!values.length) {{
-        return (score) => score;
+        return (score) => Math.max(0, Math.min(1, Number(score) || 0));
       }}
       const min = Math.min(...values);
       const max = Math.max(...values);
       const spread = max - min;
       if (spread < 0.035) {{
-        return (score) => Math.max(0, Math.min(1, 0.5 + ((score - ((min + max) / 2)) * 8)));
+        return (score) => Math.max(0, Math.min(1, 0.5 + ((((Number(score) || 0) - ((min + max) / 2)) * 8))));
       }}
-      return (score) => Math.max(0, Math.min(1, (score - min) / spread));
+      return (score) => Math.max(0, Math.min(1, (((Number(score) || 0) - min) / spread)));
     }}
 
     function sizeForVolume(value, minValue, maxValue) {{
@@ -657,6 +724,9 @@ def render_html_report(result: GraphResult, run_summary: Dict[str, Any]) -> str:
         chat_name: series.chat_name,
         snapshot,
         currentWarmth,
+        warmthIndexAbsolute: snapshot.warmth_index || currentWarmth,
+        bondIndexAbsolute: snapshot.bond_index || snapshot.tie_strength_score || 0,
+        integratedColor: integratedColor(snapshot),
         warmthIndex: warmth7vs28,
         volume7vs28,
         volume28vs91,
@@ -680,13 +750,14 @@ def render_html_report(result: GraphResult, run_summary: Dict[str, Any]) -> str:
     function passesFilter(row) {{
       if (state.filter === 'all') return true;
       if (state.filter === 'active') return ['active_mutual','active_asymmetric','revived','new_connection'].includes(row.snapshot.status);
-      if (state.filter === 'warmer') return row.currentWarmth >= 0.56 || row.warmth7vs28 > 103;
+      if (state.filter === 'warmer') return row.warmthIndexAbsolute >= 0.58 || row.warmth7vs28 > 103;
       if (state.filter === 'cooling') return row.warmth7vs28 < 97 || row.volumeDeltaRatio < -0.12;
       return true;
     }}
 
     function sortMetric(row) {{
-      if (state.sort === 'warmth') return row.currentWarmth * 1000 + row.snapshot.tie_strength_score;
+      if (state.sort === 'warmth') return row.warmthIndexAbsolute * 1000 + row.snapshot.tie_strength_score;
+      if (state.sort === 'bond') return row.bondIndexAbsolute * 1000 + row.snapshot.tie_strength_score;
       if (state.sort === 'change') return Math.abs(row.volumeDeltaRatio) * 1000 + Math.abs(row.warmth7vs28 - 100) * 10 + row.snapshot.tie_strength_score;
       return row.snapshot.messages_total_90d || 0;
     }}
@@ -704,14 +775,15 @@ def render_html_report(result: GraphResult, run_summary: Dict[str, Any]) -> str:
       }};
     }}
 
+    function weightedIndex(items, getter) {{
+      if (!items.length) return 100;
+      const total = items.reduce((sum, item) => sum + Math.max(1, item.snapshot.messages_total_90d || 0), 0);
+      const score = items.reduce((sum, item) => sum + getter(item) * Math.max(1, item.snapshot.messages_total_90d || 0), 0) / total;
+      return Math.round(score);
+    }}
+
     function renderMetrics(allRows, visibleRows) {{
       const snapshot = payload.networkSnapshotsByDate[state.selectedDate] || payload.networkSnapshot || {{}};
-      const weightedIndex = (items, getter) => {{
-        if (!items.length) return 100;
-        const total = items.reduce((sum, item) => sum + Math.max(1, item.snapshot.messages_total_90d || 0), 0);
-        const score = items.reduce((sum, item) => sum + getter(item) * Math.max(1, item.snapshot.messages_total_90d || 0), 0) / total;
-        return Math.round(score);
-      }};
       const warmth7vs28 = weightedIndex(allRows, (item) => item.warmth7vs28);
       const warmth28vs91 = weightedIndex(allRows, (item) => item.warmth28vs91);
       const items = [
@@ -719,7 +791,8 @@ def render_html_report(result: GraphResult, run_summary: Dict[str, Any]) -> str:
         ['Active ties', snapshot.active_relationships || 0, 'currently active relationships'],
         ['Warmth 7d vs 28d', warmth7vs28, '100 = same daily warmth'],
         ['Warmth 28d vs 91d', warmth28vs91, '100 = same daily warmth'],
-        ['Mean mutual warmth', formatScale01(snapshot.mean_mutual_warmth || 0), '0 = cold, 1 = warm'],
+        ['Mean warmth index', formatScale01(snapshot.mean_warmth_index || 0), '0 = cold, 1 = warm'],
+        ['Mean bond index', formatScale01(snapshot.mean_bond_index || 0), '0 = weak, 1 = strong'],
       ];
       metricsEl.innerHTML = items.map(([label, value, sub]) => `
         <div class="metric-card">
@@ -752,18 +825,35 @@ def render_html_report(result: GraphResult, run_summary: Dict[str, Any]) -> str:
       const volumes = rows.map((row) => row.snapshot.messages_total_90d || 0);
       const maxVolume = Math.max(...volumes, 1);
       const minVolume = Math.min(...volumes, maxVolume);
-      const normalizeWarmth = buildWarmthNormalizer(rows);
+      const normalizeWarmth = buildScoreNormalizer(
+        rows.flatMap((row) => [
+          {{ value: row.snapshot.warmth_index_out || 0 }},
+          {{ value: row.snapshot.warmth_index_in || 0 }},
+        ]),
+        (item) => item.value,
+      );
+      const normalizeBond = buildScoreNormalizer(
+        rows.flatMap((row) => [
+          {{ value: row.snapshot.bond_index_out || 0 }},
+          {{ value: row.snapshot.bond_index_in || 0 }},
+        ]),
+        (item) => item.value,
+      );
       boardEl.innerHTML = rows.map((row) => {{
         const size = sizeForVolume(row.snapshot.messages_total_90d || 0, minVolume, maxVolume);
         const selected = row.peer_id === state.selectedPeerId;
-        const left = warmthColor(normalizeWarmth(row.snapshot.warmth_out || 0));
-        const right = warmthColor(normalizeWarmth(row.snapshot.warmth_in || 0));
+        const warmthLeft = warmthColor(normalizeWarmth(row.snapshot.warmth_index_out || 0));
+        const warmthRight = warmthColor(normalizeWarmth(row.snapshot.warmth_index_in || 0));
+        const bondLeft = warmthColor(normalizeBond(row.snapshot.bond_index_out || 0));
+        const bondRight = warmthColor(normalizeBond(row.snapshot.bond_index_in || 0));
         const fontSize = Math.max(10, Math.min(16, Math.round(size / 9.8)));
         const name = shortLabel(row.peer_label, size >= 150 ? 22 : 18);
         return `
           <button class="bubble-button" data-peer="${{htmlEscape(row.peer_id)}}" title="${{htmlEscape(row.peer_label || row.peer_id)}}">
             <div class="trend-badge">${{htmlEscape(row.trendSymbol)}}</div>
-            <div class="bubble ${{selected ? 'selected' : ''}}" style="width:${{size}}px;height:${{size}}px;background:linear-gradient(90deg, ${{left}} 0 50%, ${{right}} 50% 100%);">
+            <div class="bubble ${{selected ? 'selected' : ''}}" style="width:${{size}}px;height:${{size}}px;">
+              <div class="ring warmth-ring" style="background:linear-gradient(90deg, ${{warmthLeft}} 0 50%, ${{warmthRight}} 50% 100%);"></div>
+              <div class="ring bond-ring" style="background:linear-gradient(90deg, ${{bondLeft}} 0 50%, ${{bondRight}} 50% 100%);"></div>
               <div class="bubble-core">
                 <span class="bubble-name" style="font-size:${{fontSize}}px;">${{htmlEscape(name)}}</span>
               </div>
@@ -793,6 +883,7 @@ def render_html_report(result: GraphResult, run_summary: Dict[str, Any]) -> str:
         detailPills.innerHTML = '';
         detailBubbleWrap.innerHTML = '';
         detailGrid.innerHTML = '';
+        profileGrid.innerHTML = '';
         volumeGrid.innerHTML = '';
         warmthGrid.innerHTML = '';
         return;
@@ -805,8 +896,9 @@ def render_html_report(result: GraphResult, run_summary: Dict[str, Any]) -> str:
       const detailItems = [
         ['Messages 90d', selected.snapshot.messages_total_90d],
         ['Reciprocity', formatScale01(selected.snapshot.reciprocity)],
-        ['You → them', formatScale01(selected.snapshot.warmth_out)],
-        ['Them → you', formatScale01(selected.snapshot.warmth_in)],
+        ['Warmth index', formatScale01(selected.snapshot.warmth_index || selected.warmthIndexAbsolute)],
+        ['Bond index', formatScale01(selected.snapshot.bond_index || selected.bondIndexAbsolute)],
+        ['Confidence', formatScale01(selected.snapshot.confidence_score || 0)],
       ];
       detailGrid.innerHTML = detailItems.map(([label, value]) => `
         <div class="detail-box">
@@ -814,6 +906,26 @@ def render_html_report(result: GraphResult, run_summary: Dict[str, Any]) -> str:
           <div class="v">${{htmlEscape(formatNumber(value))}}</div>
         </div>
       `).join('');
+      const profileItems = [
+        ['You → warmth', selected.snapshot.warmth_out || 0, 'tone from your side', false],
+        ['Them → warmth', selected.snapshot.warmth_in || 0, 'tone from their side', false],
+        ['You → warmth index', selected.snapshot.warmth_index_out || 0, 'integrated emotional warmth', false],
+        ['Them → warmth index', selected.snapshot.warmth_index_in || 0, 'integrated emotional warmth', false],
+        ['You → support', selected.snapshot.support_out || 0, 'care / reassurance / help', false],
+        ['Them → support', selected.snapshot.support_in || 0, 'care / reassurance / help', false],
+        ['You → engagement', selected.snapshot.engagement_out || 0, 'who carries the exchange', false],
+        ['Them → engagement', selected.snapshot.engagement_in || 0, 'who carries the exchange', false],
+        ['You → bond index', selected.snapshot.bond_index_out || 0, 'strength from your side', false],
+        ['Them → bond index', selected.snapshot.bond_index_in || 0, 'strength from their side', false],
+        ['You → responsiveness', selected.snapshot.responsiveness_out || 0, 'speed / consistency', false],
+        ['Them → responsiveness', selected.snapshot.responsiveness_in || 0, 'speed / consistency', false],
+        ['You → formality', selected.snapshot.formality_out || 0, 'higher means more formal', true],
+        ['Them → formality', selected.snapshot.formality_in || 0, 'higher means more formal', true],
+        ['Stability', selected.snapshot.stability_score || 0, 'active across recent weeks', false],
+        ['Depth', selected.snapshot.depth_score || 0, 'longer / more personal text', false],
+        ['Tension', selected.snapshot.mutual_tension || 0, 'higher means more friction', true],
+      ];
+      profileGrid.innerHTML = profileItems.map(([label, value, sub, invert]) => renderScaleCard(label, value, sub, invert)).join('');
       volumeGrid.innerHTML = [
         ['7d vs 28d', signedPercent(selected.volume7vs28.delta), 'daily msg rate'],
         ['28d vs 91d', signedPercent(selected.volume28vs91.delta), 'daily msg rate'],
@@ -837,15 +949,46 @@ def render_html_report(result: GraphResult, run_summary: Dict[str, Any]) -> str:
     }}
 
     function renderDetailBubble(row, rows) {{
-      const normalizeWarmth = buildWarmthNormalizer(rows);
-      const left = warmthColor(normalizeWarmth(row.snapshot.warmth_out || 0));
-      const right = warmthColor(normalizeWarmth(row.snapshot.warmth_in || 0));
+      const normalizeWarmth = buildScoreNormalizer(
+        rows.flatMap((item) => [
+          {{ value: item.snapshot.warmth_index_out || 0 }},
+          {{ value: item.snapshot.warmth_index_in || 0 }},
+        ]),
+        (item) => item.value,
+      );
+      const normalizeBond = buildScoreNormalizer(
+        rows.flatMap((item) => [
+          {{ value: item.snapshot.bond_index_out || 0 }},
+          {{ value: item.snapshot.bond_index_in || 0 }},
+        ]),
+        (item) => item.value,
+      );
+      const warmthLeft = warmthColor(normalizeWarmth(row.snapshot.warmth_index_out || 0));
+      const warmthRight = warmthColor(normalizeWarmth(row.snapshot.warmth_index_in || 0));
+      const bondLeft = warmthColor(normalizeBond(row.snapshot.bond_index_out || 0));
+      const bondRight = warmthColor(normalizeBond(row.snapshot.bond_index_in || 0));
       return `
-        <div class="bubble selected" style="width:182px;height:182px;background:linear-gradient(90deg, ${{left}} 0 50%, ${{right}} 50% 100%);">
+        <div class="bubble selected" style="width:182px;height:182px;">
+          <div class="ring warmth-ring" style="background:linear-gradient(90deg, ${{warmthLeft}} 0 50%, ${{warmthRight}} 50% 100%);"></div>
+          <div class="ring bond-ring" style="background:linear-gradient(90deg, ${{bondLeft}} 0 50%, ${{bondRight}} 50% 100%);"></div>
           <div class="bubble-core">
             <span class="bubble-name" style="font-size:16px;">${{htmlEscape(shortLabel(row.peer_label, 28))}}</span>
           </div>
-          <div class="trend-badge">${{htmlEscape(row.trendSymbol)}}</div>
+        </div>
+      `;
+    }}
+
+    function renderScaleCard(label, value, sub, invert = false) {{
+      const clamped = Math.max(0, Math.min(1, Number(value) || 0));
+      const barValue = invert ? 1 - clamped : clamped;
+      return `
+        <div class="scale-card">
+          <div class="label">${{htmlEscape(label)}}</div>
+          <div class="value-row">
+            <div class="value">${{htmlEscape(formatScale01(clamped))}}</div>
+            <div class="sub">${{htmlEscape(sub)}}</div>
+          </div>
+          <div class="scale-bar"><div class="scale-bar-fill" style="width:${{Math.round(barValue * 100)}}%"></div></div>
         </div>
       `;
     }}
@@ -893,9 +1036,9 @@ def render_html_report(result: GraphResult, run_summary: Dict[str, Any]) -> str:
     }}
 
     function currentWarmthWindow(snapshot, days) {{
-      if (days <= 7) return ((snapshot.warmth_out_7d || 0) + (snapshot.warmth_in_7d || 0)) / 2;
-      if (days <= 28) return ((snapshot.warmth_out_28d || 0) + (snapshot.warmth_in_28d || 0)) / 2;
-      return ((snapshot.warmth_out_91d || 0) + (snapshot.warmth_in_91d || 0)) / 2;
+      if (days <= 7) return snapshot.warmth_index_7d || ((snapshot.warmth_out_7d || 0) + (snapshot.warmth_in_7d || 0)) / 2;
+      if (days <= 28) return snapshot.warmth_index_28d || ((snapshot.warmth_out_28d || 0) + (snapshot.warmth_in_28d || 0)) / 2;
+      return snapshot.warmth_index_91d || ((snapshot.warmth_out_91d || 0) + (snapshot.warmth_in_91d || 0)) / 2;
     }}
 
     function render() {{
@@ -969,6 +1112,34 @@ def _snapshot_to_series(snapshot_now: Dict[str, Any]) -> List[Dict[str, Any]]:
                         "warmth_in_28d": inbound.get("warmth_score_28d", 0),
                         "warmth_out_91d": outbound.get("warmth_score_91d", 0),
                         "warmth_in_91d": inbound.get("warmth_score_91d", 0),
+                        "tension_out": outbound.get("tension_score", 0),
+                        "tension_in": inbound.get("tension_score", 0),
+                        "support_out": outbound.get("support_score", 0),
+                        "support_in": inbound.get("support_score", 0),
+                        "formality_out": outbound.get("formality_score", 0),
+                        "formality_in": inbound.get("formality_score", 0),
+                        "warmth_index_out": pair.get("warmth_index_out", outbound.get("warmth_index", 0)),
+                        "warmth_index_in": pair.get("warmth_index_in", inbound.get("warmth_index", 0)),
+                        "warmth_index_7d": pair.get("warmth_index_7d", 0),
+                        "warmth_index_28d": pair.get("warmth_index_28d", 0),
+                        "warmth_index_91d": pair.get("warmth_index_91d", 0),
+                        "warmth_index": pair.get("warmth_index", 0),
+                        "depth_out": outbound.get("depth_score", 0),
+                        "depth_in": inbound.get("depth_score", 0),
+                        "engagement_out": pair.get("engagement_out", 0),
+                        "engagement_in": pair.get("engagement_in", 0),
+                        "responsiveness_out": outbound.get("responsiveness_score", 0) or 0,
+                        "responsiveness_in": inbound.get("responsiveness_score", 0) or 0,
+                        "stability_score": pair.get("stability_score", pair.get("continuity_score", 0)),
+                        "depth_score": pair.get("depth_score", 0),
+                        "bond_index_out": pair.get("bond_index_out", 0),
+                        "bond_index_in": pair.get("bond_index_in", 0),
+                        "bond_index": pair.get("bond_index", pair.get("tie_strength_score", 0)),
+                        "mutual_tension": pair.get("mutual_tension", 0),
+                        "mutual_support": pair.get("mutual_support", 0),
+                        "mutual_formality": pair.get("mutual_formality", 0),
+                        "integrated_color_score": pair.get("integrated_color_score", pair.get("mutual_warmth", 0)),
+                        "confidence_score": pair.get("confidence_score", 0),
                         "reciprocity": pair.get("reciprocity", 0),
                         "status": pair.get("status", "unknown"),
                         "messages_total_7d": pair.get("messages_total_7d", 0),

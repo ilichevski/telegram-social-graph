@@ -20,6 +20,65 @@ TOKEN_WINDOW_180_DAYS = 180
 TOKEN_WINDOW_365_DAYS = 365
 TOKEN_WINDOW_7_DAYS = 7
 SESSION_BREAK_HOURS = 12
+DEPTH_MARKERS = (
+    "чувств",
+    "чувствую",
+    "думаю",
+    "пережива",
+    "важно",
+    "лично",
+    "искрен",
+    "откров",
+    "смыс",
+    "feel",
+    "feeling",
+    "think",
+    "honest",
+    "important",
+    "personal",
+    "vulnerab",
+    "meaning",
+)
+SUPPORT_MARKERS = (
+    "держись",
+    "поддерж",
+    "если что",
+    "рядом",
+    "помогу",
+    "помочь",
+    "береги",
+    "не пережива",
+    "все будет",
+    "с тобой",
+    "take care",
+    "i'm here",
+    "here for you",
+    "support",
+    "help you",
+    "proud of you",
+    "you can do it",
+)
+FORMALITY_MARKERS = (
+    "здравствуйте",
+    "добрый день",
+    "доброе утро",
+    "благодарю",
+    "прошу",
+    "коллеги",
+    "уважаем",
+    "с уважением",
+    "сообщите",
+    "подскажите",
+    "направляю",
+    "просьба",
+    "good morning",
+    "hello,",
+    "regards",
+    "please confirm",
+    "kindly",
+    "dear",
+    "let me know",
+)
 
 
 @dataclass
@@ -204,11 +263,30 @@ def _directional_metrics(
     count_90d = 0
     count_prev_90d = 0
     count_prev_365d = 0
+    chars_90d = 0
+    long_messages_90d = 0
+    meaningful_messages_90d = 0
+    question_messages_90d = 0
+    short_messages_90d = 0
+    depth_marker_messages_90d = 0
+    support_marker_messages_90d = 0
+    formal_marker_messages_90d = 0
     warmth_values: List[float] = []
     warmth_values_7d: List[float] = []
     warmth_values_28d: List[float] = []
     warmth_values_91d: List[float] = []
     tension_values: List[float] = []
+    tension_values_7d: List[float] = []
+    tension_values_28d: List[float] = []
+    tension_values_91d: List[float] = []
+    support_values: List[float] = []
+    support_values_7d: List[float] = []
+    support_values_28d: List[float] = []
+    support_values_91d: List[float] = []
+    formality_values: List[float] = []
+    formality_values_7d: List[float] = []
+    formality_values_28d: List[float] = []
+    formality_values_91d: List[float] = []
     media_counts: Counter[str] = Counter()
     last_message_at: Optional[str] = None
 
@@ -221,26 +299,52 @@ def _directional_metrics(
         total_chars += text_length
         weighted_messages += weight
         weighted_chars += text_length * weight
-        warmth, tension = _tone_scores(message.text or "")
+        warmth, tension, support, formality = _tone_scores(message.text or "")
         warmth_values.append(warmth)
         tension_values.append(tension)
+        support_values.append(support)
+        formality_values.append(formality)
         if age_days <= TOKEN_WINDOW_7_DAYS:
             count_7d += 1
             weighted_7d += weight
             warmth_values_7d.append(warmth)
+            tension_values_7d.append(tension)
+            support_values_7d.append(support)
+            formality_values_7d.append(formality)
         if age_days <= TOKEN_WINDOW_28_DAYS:
             count_28d += 1
             weighted_28d += weight
             warmth_values_28d.append(warmth)
+            tension_values_28d.append(tension)
+            support_values_28d.append(support)
+            formality_values_28d.append(formality)
         if age_days <= TOKEN_WINDOW_30_DAYS:
             count_30d += 1
             weighted_30d += weight
         if age_days <= TOKEN_WINDOW_91_DAYS:
             count_91d += 1
             warmth_values_91d.append(warmth)
+            tension_values_91d.append(tension)
+            support_values_91d.append(support)
+            formality_values_91d.append(formality)
         if age_days <= config.window_days:
             count_90d += 1
             weighted_90d += weight
+            chars_90d += text_length
+            if text_length >= 180:
+                long_messages_90d += 1
+            if text_length >= 48:
+                meaningful_messages_90d += 1
+            if text_length <= 8 and (message.text or "").casefold().strip():
+                short_messages_90d += 1
+            if "?" in (message.text or ""):
+                question_messages_90d += 1
+            if _contains_any(message.text or "", DEPTH_MARKERS):
+                depth_marker_messages_90d += 1
+            if _contains_any(message.text or "", SUPPORT_MARKERS):
+                support_marker_messages_90d += 1
+            if _contains_any(message.text or "", FORMALITY_MARKERS):
+                formal_marker_messages_90d += 1
         elif age_days <= config.window_days + config.prev_window_days:
             count_prev_90d += 1
         elif age_days <= TOKEN_WINDOW_365_DAYS:
@@ -254,6 +358,89 @@ def _directional_metrics(
     initiation_share = _initiation_share(all_messages, direction_messages, as_of_date)
     media_messages = int(counts.get("media_messages", 0))
     rich_media_messages = sum(media_counts[kind] for kind in {"photo", "voice", "video", "gif", "sticker", "audio"} if kind in media_counts)
+    avg_chars_90d = round(chars_90d / count_90d, 2) if count_90d else 0.0
+    meaningful_ratio_90d = round(meaningful_messages_90d / count_90d, 4) if count_90d else 0.0
+    long_ratio_90d = round(long_messages_90d / count_90d, 4) if count_90d else 0.0
+    question_ratio_90d = round(question_messages_90d / count_90d, 4) if count_90d else 0.0
+    short_ratio_90d = round(short_messages_90d / count_90d, 4) if count_90d else 0.0
+    depth_marker_ratio_90d = round(depth_marker_messages_90d / count_90d, 4) if count_90d else 0.0
+    support_marker_ratio_90d = round(support_marker_messages_90d / count_90d, 4) if count_90d else 0.0
+    formal_marker_ratio_90d = round(formal_marker_messages_90d / count_90d, 4) if count_90d else 0.0
+    avg_chars_score = min(1.0, avg_chars_90d / 220.0) if count_90d else 0.0
+    depth_score = round(
+        min(
+            1.0,
+            avg_chars_score * 0.24
+            + meaningful_ratio_90d * 0.22
+            + long_ratio_90d * 0.20
+            + question_ratio_90d * 0.14
+            + depth_marker_ratio_90d * 0.20,
+        ),
+        4,
+    )
+    engagement_signal = round(
+        min(
+            1.0,
+            float(initiation_share) * 0.42
+            + question_ratio_90d * 0.18
+            + meaningful_ratio_90d * 0.20
+            + (reply_metrics["responsiveness_score"] or 0.0) * 0.20,
+        ),
+        4,
+    )
+    support_mean = round(sum(support_values) / len(support_values), 4) if support_values else 0.0
+    formality_mean = round(sum(formality_values) / len(formality_values), 4) if formality_values else 0.0
+    support_score = round(
+        min(
+            1.0,
+            support_marker_ratio_90d * 3.2
+            + support_mean * 1.4
+            + depth_marker_ratio_90d * 0.25
+            + max(0.0, (round(sum(warmth_values) / len(warmth_values), 4) if warmth_values else 0.0) - 0.5) * 0.35,
+        ),
+        4,
+    )
+    formality_score = round(
+        min(
+            1.0,
+            formal_marker_ratio_90d * 2.8
+            + formality_mean * 1.2
+            + short_ratio_90d * 0.15,
+        ),
+        4,
+    )
+    warmth_index_7d = _directional_warmth_index(
+        warmth=round(sum(warmth_values_7d) / len(warmth_values_7d), 4) if warmth_values_7d else 0.0,
+        support=round(sum(support_values_7d) / len(support_values_7d), 4) if support_values_7d else 0.0,
+        tension=round(sum(tension_values_7d) / len(tension_values_7d), 4) if tension_values_7d else 0.0,
+        formality=round(sum(formality_values_7d) / len(formality_values_7d), 4) if formality_values_7d else 0.0,
+        depth=0.0,
+        responsiveness=0.0,
+    )
+    warmth_index_28d = _directional_warmth_index(
+        warmth=round(sum(warmth_values_28d) / len(warmth_values_28d), 4) if warmth_values_28d else 0.0,
+        support=round(sum(support_values_28d) / len(support_values_28d), 4) if support_values_28d else 0.0,
+        tension=round(sum(tension_values_28d) / len(tension_values_28d), 4) if tension_values_28d else 0.0,
+        formality=round(sum(formality_values_28d) / len(formality_values_28d), 4) if formality_values_28d else 0.0,
+        depth=0.0,
+        responsiveness=0.0,
+    )
+    warmth_index_91d = _directional_warmth_index(
+        warmth=round(sum(warmth_values_91d) / len(warmth_values_91d), 4) if warmth_values_91d else 0.0,
+        support=round(sum(support_values_91d) / len(support_values_91d), 4) if support_values_91d else 0.0,
+        tension=round(sum(tension_values_91d) / len(tension_values_91d), 4) if tension_values_91d else 0.0,
+        formality=round(sum(formality_values_91d) / len(formality_values_91d), 4) if formality_values_91d else 0.0,
+        depth=0.0,
+        responsiveness=0.0,
+    )
+    warmth_index = _directional_warmth_index(
+        warmth=round(sum(warmth_values) / len(warmth_values), 4) if warmth_values else 0.0,
+        support=support_score,
+        tension=round(sum(tension_values) / len(tension_values), 4) if tension_values else 0.0,
+        formality=formality_score,
+        depth=depth_score,
+        responsiveness=reply_metrics["responsiveness_score"] or 0.0,
+    )
 
     return {
         "messages_count_7d": count_7d,
@@ -276,9 +463,35 @@ def _directional_metrics(
         "warmth_score_91d": round(sum(warmth_values_91d) / len(warmth_values_91d), 4) if warmth_values_91d else 0.0,
         "warmth_score": round(sum(warmth_values) / len(warmth_values), 4) if warmth_values else 0.0,
         "tension_score": round(sum(tension_values) / len(tension_values), 4) if tension_values else 0.0,
+        "support_score_7d": round(sum(support_values_7d) / len(support_values_7d), 4) if support_values_7d else 0.0,
+        "support_score_28d": round(sum(support_values_28d) / len(support_values_28d), 4) if support_values_28d else 0.0,
+        "support_score_91d": round(sum(support_values_91d) / len(support_values_91d), 4) if support_values_91d else 0.0,
+        "support_score": round(sum(support_values) / len(support_values), 4) if support_values else 0.0,
+        "formality_score_7d": round(sum(formality_values_7d) / len(formality_values_7d), 4) if formality_values_7d else 0.0,
+        "formality_score_28d": round(sum(formality_values_28d) / len(formality_values_28d), 4) if formality_values_28d else 0.0,
+        "formality_score_91d": round(sum(formality_values_91d) / len(formality_values_91d), 4) if formality_values_91d else 0.0,
+        "formality_score": round(sum(formality_values) / len(formality_values), 4) if formality_values else 0.0,
         "median_response_minutes": reply_metrics["median_response_minutes"],
         "responsiveness_score": reply_metrics["responsiveness_score"],
         "session_initiation_share": initiation_share,
+        "avg_chars_90d": avg_chars_90d,
+        "meaningful_ratio_90d": meaningful_ratio_90d,
+        "long_message_ratio_90d": long_ratio_90d,
+        "question_ratio_90d": question_ratio_90d,
+        "short_message_ratio_90d": short_ratio_90d,
+        "depth_marker_ratio_90d": depth_marker_ratio_90d,
+        "support_marker_ratio_90d": support_marker_ratio_90d,
+        "formal_marker_ratio_90d": formal_marker_ratio_90d,
+        "depth_score": depth_score,
+        "engagement_signal": engagement_signal,
+        "support_score_density": support_mean,
+        "formality_score_density": formality_mean,
+        "support_score": support_score,
+        "formality_score": formality_score,
+        "warmth_index_7d": warmth_index_7d,
+        "warmth_index_28d": warmth_index_28d,
+        "warmth_index_91d": warmth_index_91d,
+        "warmth_index": warmth_index,
         "media_messages": media_messages,
         "media_breakdown": dict(media_counts),
         "rich_media_ratio": round(rich_media_messages / max(len(direction_messages), 1), 4) if direction_messages else 0.0,
@@ -303,6 +516,9 @@ def _pair_metrics(
     mutual_warmth_28d = round((float(outbound["warmth_score_28d"]) + float(inbound["warmth_score_28d"])) / 2.0, 4)
     mutual_warmth_91d = round((float(outbound["warmth_score_91d"]) + float(inbound["warmth_score_91d"])) / 2.0, 4)
     mutual_warmth = round((float(outbound["warmth_score"]) + float(inbound["warmth_score"])) / 2.0, 4)
+    mutual_tension = round((float(outbound["tension_score"]) + float(inbound["tension_score"])) / 2.0, 4)
+    mutual_support = round((float(outbound["support_score"]) + float(inbound["support_score"])) / 2.0, 4)
+    mutual_formality = round((float(outbound["formality_score"]) + float(inbound["formality_score"])) / 2.0, 4)
     mutual_responsiveness = _mean_defined(
         [outbound.get("responsiveness_score"), inbound.get("responsiveness_score")]
     )
@@ -313,6 +529,100 @@ def _pair_metrics(
     continuity_score = _continuity_score(all_messages, as_of_date, config.window_days)
     recency_score = _recency_score(outbound, inbound)
     volume_score = round(min(1.0, math.log1p(max(weighted_messages_total, 0.0)) / 6.0), 4)
+    stability_score = round(
+        min(
+            1.0,
+            continuity_score * 0.62
+            + recency_score * 0.23
+        ),
+        4,
+    )
+    if all_messages:
+        active_days = {
+            message.timestamp.date()
+            for message in all_messages
+            if 0 <= _age_days(as_of_date, message.timestamp) <= config.window_days
+        }
+        active_day_score = min(1.0, len(active_days) / 18.0)
+        stability_score = round(min(1.0, stability_score + active_day_score * 0.15), 4)
+    depth_score = round(
+        min(
+            1.0,
+            (float(outbound["depth_score"]) + float(inbound["depth_score"])) / 2.0 * 0.82
+            + initiation_balance * 0.10
+            + min(1.0, reciprocity + 0.1) * 0.08,
+        ),
+        4,
+    )
+    total_messages_90d = max(1, messages_total)
+    outbound_share = int(outbound["messages_count_90d"]) / total_messages_90d
+    inbound_share = int(inbound["messages_count_90d"]) / total_messages_90d
+    engagement_out = round(
+        min(
+            1.0,
+            outbound_share * 0.34
+            + float(outbound["session_initiation_share"]) * 0.28
+            + float(outbound["engagement_signal"]) * 0.23
+            + (float(outbound.get("responsiveness_score") or 0.0)) * 0.15,
+        ),
+        4,
+    )
+    engagement_in = round(
+        min(
+            1.0,
+            inbound_share * 0.34
+            + float(inbound["session_initiation_share"]) * 0.28
+            + float(inbound["engagement_signal"]) * 0.23
+            + (float(inbound.get("responsiveness_score") or 0.0)) * 0.15,
+        ),
+        4,
+    )
+    warmth_index_out = float(outbound["warmth_index"])
+    warmth_index_in = float(inbound["warmth_index"])
+    warmth_index_7d = round((float(outbound["warmth_index_7d"]) + float(inbound["warmth_index_7d"])) / 2.0, 4)
+    warmth_index_28d = round((float(outbound["warmth_index_28d"]) + float(inbound["warmth_index_28d"])) / 2.0, 4)
+    warmth_index_91d = round((float(outbound["warmth_index_91d"]) + float(inbound["warmth_index_91d"])) / 2.0, 4)
+    warmth_index = _pair_warmth_index(warmth_index_out, warmth_index_in)
+    bond_index_out = _directional_bond_index(
+        warmth_index=warmth_index_out,
+        engagement=engagement_out,
+        responsiveness=float(outbound.get("responsiveness_score") or 0.0),
+        depth=float(outbound["depth_score"]),
+        support=float(outbound["support_score"]),
+        formality=float(outbound["formality_score"]),
+        reciprocity=reciprocity,
+        stability=stability_score,
+    )
+    bond_index_in = _directional_bond_index(
+        warmth_index=warmth_index_in,
+        engagement=engagement_in,
+        responsiveness=float(inbound.get("responsiveness_score") or 0.0),
+        depth=float(inbound["depth_score"]),
+        support=float(inbound["support_score"]),
+        formality=float(inbound["formality_score"]),
+        reciprocity=reciprocity,
+        stability=stability_score,
+    )
+    bond_index = _pair_bond_index(bond_index_out, bond_index_in, reciprocity, stability_score)
+    integrated_color_score = _integrated_color_score(warmth_index, bond_index)
+    response_coverage = 0.0
+    if outbound.get("responsiveness_score") is not None:
+        response_coverage += 0.5
+    if inbound.get("responsiveness_score") is not None:
+        response_coverage += 0.5
+    message_confidence = min(1.0, math.log1p(messages_total) / math.log1p(160.0)) if messages_total > 0 else 0.0
+    confidence_score = round(
+        min(
+            1.0,
+            message_confidence * 0.45
+            + continuity_score * 0.18
+            + min(1.0, reciprocity + 0.08) * 0.12
+            + depth_score * 0.10
+            + response_coverage * 0.10
+            + min(1.0, weighted_messages_total / 120.0) * 0.05,
+        ),
+        4,
+    )
     closeness_score = round(
         reciprocity * 0.30
         + mutual_warmth * 0.20
@@ -356,9 +666,27 @@ def _pair_metrics(
         "mutual_warmth_28d": mutual_warmth_28d,
         "mutual_warmth_91d": mutual_warmth_91d,
         "mutual_warmth": mutual_warmth,
+        "mutual_tension": mutual_tension,
+        "mutual_support": mutual_support,
+        "mutual_formality": mutual_formality,
         "mutual_responsiveness": mutual_responsiveness,
+        "warmth_index_out": warmth_index_out,
+        "warmth_index_in": warmth_index_in,
+        "warmth_index_7d": warmth_index_7d,
+        "warmth_index_28d": warmth_index_28d,
+        "warmth_index_91d": warmth_index_91d,
+        "warmth_index": warmth_index,
         "initiation_balance": initiation_balance,
         "continuity_score": continuity_score,
+        "stability_score": stability_score,
+        "depth_score": depth_score,
+        "engagement_out": engagement_out,
+        "engagement_in": engagement_in,
+        "bond_index_out": bond_index_out,
+        "bond_index_in": bond_index_in,
+        "bond_index": bond_index,
+        "integrated_color_score": integrated_color_score,
+        "confidence_score": confidence_score,
         "recency_score": recency_score,
         "volume_score": volume_score,
         "closeness_score": closeness_score,
@@ -376,6 +704,8 @@ def _build_network_snapshot(relationships: List[Dict[str, Any]], as_of_date: dat
     mean_closeness = _mean_defined([relationship["pair"]["closeness_score"] for relationship in relationships])
     mean_reciprocity = _mean_defined([relationship["pair"]["reciprocity"] for relationship in relationships])
     mean_mutual_warmth = _mean_defined([relationship["pair"]["mutual_warmth"] for relationship in relationships])
+    mean_warmth_index = _mean_defined([relationship["pair"]["warmth_index"] for relationship in relationships])
+    mean_bond_index = _mean_defined([relationship["pair"]["bond_index"] for relationship in relationships])
     mean_mutual_responsiveness = _mean_defined(
         [relationship["pair"]["mutual_responsiveness"] for relationship in relationships]
     )
@@ -395,6 +725,8 @@ def _build_network_snapshot(relationships: List[Dict[str, Any]], as_of_date: dat
         "mean_closeness": mean_closeness,
         "mean_reciprocity": mean_reciprocity,
         "mean_mutual_warmth": mean_mutual_warmth,
+        "mean_warmth_index": mean_warmth_index,
+        "mean_bond_index": mean_bond_index,
         "mean_mutual_responsiveness": mean_mutual_responsiveness,
         "top_relationships": top_relationship_ids,
         "status_counts": dict(status_counts),
@@ -490,6 +822,34 @@ def _build_relationship_timeseries(snapshot_series: List[Dict[str, Any]]) -> Lis
                     "warmth_in_28d": inbound["warmth_score_28d"],
                     "warmth_out_91d": outbound["warmth_score_91d"],
                     "warmth_in_91d": inbound["warmth_score_91d"],
+                    "tension_out": outbound["tension_score"],
+                    "tension_in": inbound["tension_score"],
+                    "support_out": outbound["support_score"],
+                    "support_in": inbound["support_score"],
+                    "formality_out": outbound["formality_score"],
+                    "formality_in": inbound["formality_score"],
+                    "warmth_index_out": pair["warmth_index_out"],
+                    "warmth_index_in": pair["warmth_index_in"],
+                    "warmth_index_7d": pair["warmth_index_7d"],
+                    "warmth_index_28d": pair["warmth_index_28d"],
+                    "warmth_index_91d": pair["warmth_index_91d"],
+                    "warmth_index": pair["warmth_index"],
+                    "depth_out": outbound["depth_score"],
+                    "depth_in": inbound["depth_score"],
+                    "engagement_out": pair["engagement_out"],
+                    "engagement_in": pair["engagement_in"],
+                    "responsiveness_out": outbound.get("responsiveness_score") or 0.0,
+                    "responsiveness_in": inbound.get("responsiveness_score") or 0.0,
+                    "stability_score": pair["stability_score"],
+                    "depth_score": pair["depth_score"],
+                    "bond_index_out": pair["bond_index_out"],
+                    "bond_index_in": pair["bond_index_in"],
+                    "bond_index": pair["bond_index"],
+                    "mutual_tension": pair["mutual_tension"],
+                    "mutual_support": pair["mutual_support"],
+                    "mutual_formality": pair["mutual_formality"],
+                    "integrated_color_score": pair["integrated_color_score"],
+                    "confidence_score": pair["confidence_score"],
                     "reciprocity": pair["reciprocity"],
                     "status": pair["status"],
                     "messages_total_7d": pair["messages_total_7d"],
@@ -546,6 +906,11 @@ def _snapshot_delta(current: Dict[str, Any], baseline: Optional[Dict[str, Any]])
         ),
         "warmth_out_delta": round(float(current["warmth_out"]) - float(baseline["warmth_out"]), 4),
         "warmth_in_delta": round(float(current["warmth_in"]) - float(baseline["warmth_in"]), 4),
+        "warmth_index_delta": round(float(current.get("warmth_index", 0.0)) - float(baseline.get("warmth_index", 0.0)), 4),
+        "bond_index_delta": round(float(current.get("bond_index", 0.0)) - float(baseline.get("bond_index", 0.0)), 4),
+        "stability_delta": round(float(current.get("stability_score", 0.0)) - float(baseline.get("stability_score", 0.0)), 4),
+        "depth_delta": round(float(current.get("depth_score", 0.0)) - float(baseline.get("depth_score", 0.0)), 4),
+        "mutual_tension_delta": round(float(current.get("mutual_tension", 0.0)) - float(baseline.get("mutual_tension", 0.0)), 4),
         "reciprocity_delta": round(float(current["reciprocity"]) - float(baseline["reciprocity"]), 4),
         "messages_total_90d_delta": int(current["messages_total_90d"]) - int(baseline["messages_total_90d"]),
         "status_changed": current["status"] != baseline["status"],
@@ -729,6 +1094,76 @@ def _recency_score(outbound: Dict[str, Any], inbound: Dict[str, Any]) -> float:
     )
 
 
+def _directional_warmth_index(
+    *,
+    warmth: float,
+    support: float,
+    tension: float,
+    formality: float,
+    depth: float,
+    responsiveness: float,
+) -> float:
+    return round(
+        min(
+            1.0,
+            max(0.0, warmth) * 0.34
+            + max(0.0, support) * 0.24
+            + max(0.0, 1.0 - tension) * 0.18
+            + max(0.0, 1.0 - formality) * 0.12
+            + max(0.0, depth) * 0.08
+            + max(0.0, responsiveness) * 0.04,
+        ),
+        4,
+    )
+
+
+def _pair_warmth_index(left: float, right: float) -> float:
+    return round((float(left) + float(right)) / 2.0, 4)
+
+
+def _directional_bond_index(
+    *,
+    warmth_index: float,
+    engagement: float,
+    responsiveness: float,
+    depth: float,
+    support: float,
+    formality: float,
+    reciprocity: float,
+    stability: float,
+) -> float:
+    return round(
+        min(
+            1.0,
+            max(0.0, engagement) * 0.26
+            + max(0.0, responsiveness) * 0.18
+            + max(0.0, depth) * 0.15
+            + max(0.0, warmth_index) * 0.12
+            + max(0.0, support) * 0.11
+            + max(0.0, 1.0 - formality) * 0.06
+            + max(0.0, reciprocity) * 0.06
+            + max(0.0, stability) * 0.06,
+        ),
+        4,
+    )
+
+
+def _pair_bond_index(left: float, right: float, reciprocity: float, stability: float) -> float:
+    return round(
+        min(
+            1.0,
+            ((float(left) + float(right)) / 2.0) * 0.72
+            + float(reciprocity) * 0.16
+            + float(stability) * 0.12,
+        ),
+        4,
+    )
+
+
+def _integrated_color_score(warmth_index: float, bond_index: float) -> float:
+    return round(min(1.0, float(warmth_index) * 0.48 + float(bond_index) * 0.52), 4)
+
+
 def _ratio(left: int, right: int) -> float:
     high = max(left, right)
     low = min(left, right)
@@ -758,38 +1193,67 @@ def _silence_gap_days(as_of_date: date, last_contact_at: Optional[str]) -> Optio
     return max(0, (as_of_date - last_contact.date()).days)
 
 
-def _tone_scores(text: str) -> Tuple[float, float]:
+def _tone_scores(text: str) -> Tuple[float, float, float, float]:
     lowered = text.casefold()
     if not lowered.strip():
-        return 0.5, 0.0
+        return 0.5, 0.0, 0.0, 0.0
     warm_words = (
+        "дорог",
+        "родн",
+        "нежно",
         "люблю",
         "скучаю",
         "обнимаю",
         "спасибо",
+        "благодар",
+        "забоч",
+        "береги",
+        "поддерж",
+        "горж",
         "рад",
         "ценю",
+        "happy for you",
         "love",
         "miss",
         "hug",
         "thanks",
         "appreciate",
+        "care",
+        "proud",
+        "support",
     )
     tense_words = (
         "бесит",
         "злюсь",
         "обидно",
         "ненавижу",
+        "раздраж",
+        "достал",
+        "отвали",
         "annoyed",
         "angry",
         "upset",
         "hate",
+        "irritat",
+        "shut up",
     )
     warm_hits = sum(word in lowered for word in warm_words)
     tense_hits = sum(word in lowered for word in tense_words)
+    support_hits = sum(word in lowered for word in SUPPORT_MARKERS)
+    formality_hits = sum(word in lowered for word in FORMALITY_MARKERS)
     warmth = max(0.0, min(1.0, 0.5 + 0.08 * warm_hits - 0.06 * tense_hits))
     tension = max(0.0, min(1.0, 0.08 * tense_hits))
-    return round(warmth, 4), round(tension, 4)
+    support = max(0.0, min(1.0, 0.55 * min(1, support_hits) + 0.15 * max(0, support_hits - 1) + 0.06 * warm_hits))
+    formality = max(
+        0.0,
+        min(1.0, 0.45 * min(1, formality_hits) + 0.12 * max(0, formality_hits - 1) + (0.08 if ":" in text and len(text) > 80 else 0.0)),
+    )
+    return round(warmth, 4), round(tension, 4), round(support, 4), round(formality, 4)
+
+
+def _contains_any(text: str, markers: Tuple[str, ...]) -> bool:
+    lowered = text.casefold()
+    return any(marker in lowered for marker in markers)
 
 
 def _time_weight(age_days: int) -> float:
