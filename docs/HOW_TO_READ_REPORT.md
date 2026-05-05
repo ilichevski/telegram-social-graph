@@ -77,6 +77,22 @@ Full scoring details:
 
 - [SCORING_AND_INDICES.md](./SCORING_AND_INDICES.md)
 
+## Media-aware signals
+
+Some relationship metrics are influenced by more than text.
+
+Examples:
+
+- `playfulness`
+  can rise from GIFs, stickers, and expressive media habits
+- `media intimacy`
+  can rise from photos, voice messages, audio, and richer media exchange
+- `warmth` and `bond`
+  can improve indirectly when richer media exchange suggests a closer tie
+
+If local voice/audio transcription is enabled, spoken content can also affect
+support, warmth, and depth.
+
 ## What to trust most
 
 Best signals:

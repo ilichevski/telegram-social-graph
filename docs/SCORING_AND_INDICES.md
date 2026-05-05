@@ -41,6 +41,23 @@ Common fields include:
 
 These are all normalized into approximately `0.0 .. 1.0`.
 
+### Media-specific interpretation
+
+The media-aware layer currently works roughly like this:
+
+- `photos`
+  push `media_intimacy_score` more than `playfulness`
+- `voice` / `audio`
+  push `media_intimacy_score`, can improve `depth`, and can influence warmth and
+  support once local ASR text is available
+- `GIFs`
+  mostly push `media_playfulness_score`
+- `stickers`
+  mostly push `media_playfulness_score`, with some lightweight tone effects
+- `files`
+  count as media activity but are generally weaker than photos/voice/GIFs for
+  social interpretation
+
 ### Pair-level metrics
 
 Pair-level fields combine the directional signals:
@@ -125,6 +142,9 @@ The intended runtime is local `Ollama`, not a cloud API.
 - media intimacy
 - playfulness
 
+This means richer expressive media can improve warmth indirectly even if plain
+text alone would look neutral.
+
 It is still a relationship-level metric, not a full network metric.
 
 ### Bond index
@@ -138,6 +158,9 @@ It is still a relationship-level metric, not a full network metric.
 - responsiveness
 - depth
 - media intimacy
+
+This means repeated richer-media contact can strengthen bond even when the tie
+is not maximally warm in lexical tone.
 
 In practice:
 
@@ -200,6 +223,9 @@ Components:
 - lower formality
 - lower tension
 - a small short-term warmth momentum component
+
+In practice, this is the network-level index most affected by GIFs, stickers,
+voice/audio, and photo-sharing behavior.
 
 Interpretation:
 

@@ -70,6 +70,25 @@ The pipeline can extract and use signals from:
 Video support exists at the metadata layer, but the current improvement path has
 focused primarily on text, audio, and expressive media.
 
+### How media is used
+
+The project does not treat all media equally.
+
+- `photos`
+  are treated mainly as expressive closeness / intimacy signals
+- `voice messages`
+  are treated as higher-bandwidth social signals; when ASR is enabled, their
+  transcript also participates in lexical and LLM scoring
+- `audio files`
+  are handled similarly to voice where usable
+- `GIFs`
+  contribute primarily to expressive/playful signaling
+- `stickers`
+  contribute primarily to playfulness and lightweight tone cues
+- `files`
+  count as media activity, but usually weaker than photos/voice for social
+  interpretation
+
 ## 3. Privacy Model
 
 ### Local-first principle
@@ -341,6 +360,15 @@ It can incorporate:
 It is useful because some relationships are lively and playful even when they
 are not extremely deep or formal.
 
+### Current main inputs to playfulness
+
+The current playfulness layer is especially influenced by:
+
+- GIF usage
+- sticker usage
+- expressive media behavior
+- lighter relational tone when detectable
+
 ## 7.10 Media Intimacy
 
 `Media intimacy` measures closeness implied by richer media exchange.
@@ -352,6 +380,15 @@ Examples:
 - expressive media usage
 
 This is still a proxy metric, but it provides useful signal beyond plain text.
+
+### Current main inputs to media intimacy
+
+The current media intimacy layer is especially influenced by:
+
+- photos
+- voice messages
+- audio usage
+- richer expressive media exchange patterns
 
 ## 7.11 Warmth Index
 
@@ -465,6 +502,13 @@ This allows voice messages to affect:
 - lexical analysis
 - warmth/support detection
 - LLM interpretation
+
+Without transcription, voice/audio still contributes through:
+
+- duration
+- frequency
+- reciprocity of usage
+- richer-media behavioral patterns
 
 This is more informative than using only duration or volume metadata.
 

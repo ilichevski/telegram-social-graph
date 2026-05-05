@@ -23,6 +23,41 @@ This repository is released under the [Unlicense](./LICENSE). Anyone can use it 
 - builds snapshots on a chosen date and weekly history over time
 - produces `graph.json`, `summary.json`, `relationship_timeseries.json`, and `report.html`
 - optionally enriches chat warmth with a local `Ollama` model
+- can optionally enrich voice/audio locally through offline transcription
+- uses photos, voice, audio, GIFs, stickers, and files as extra social signals
+
+## Media-aware analysis
+
+The current pipeline does not rely on text alone.
+
+It also uses media behavior from the Telegram export:
+
+- `photos`
+  contribute to expressive closeness and media intimacy
+- `voice messages` and `audio`
+  contribute through duration/frequency patterns and, when enabled, local ASR
+  transcription
+- `GIFs`
+  contribute to expressive/playful communication signals
+- `stickers`
+  contribute to playfulness through sticker/emoji patterns
+- `files`
+  contribute to media activity context, though they are weaker signals than
+  photos or voice
+
+These signals can influence:
+
+- `playfulness`
+- `media intimacy`
+- `warmth index`
+- `bond index`
+- the network-level `Social Climate` index
+
+Everything remains local-first:
+
+- the Telegram export stays on your machine
+- optional LLM enrichment is intended for local `Ollama`
+- optional voice transcription is local
 
 ## Preview
 
