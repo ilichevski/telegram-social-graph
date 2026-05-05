@@ -1,5 +1,25 @@
 from __future__ import annotations
 
+
+def _llm_payload_is_zero_judgment(llm_payload: dict[str, Any]) -> bool:
+    core_fields = (
+        "self_to_peer_warmth",
+        "peer_to_self_warmth",
+        "self_to_peer_support",
+        "peer_to_self_support",
+        "depth",
+        "self_to_peer_engagement",
+        "peer_to_self_engagement",
+        "mutuality",
+    )
+    values: list[float] = []
+    for field in core_fields:
+        try:
+            values.append(float(llm_payload.get(field, 0.0) or 0.0))
+        except (TypeError, ValueError):
+            values.append(0.0)
+    return all(value == 0.0 for value in values)
+
 from dataclasses import asdict
 from datetime import date, datetime, time, timezone
 import json
@@ -32,6 +52,7 @@ from .temporal_analysis import (
 )
 from .telegram_export import load_chats
 from .models import Chat
+from .voice_asr import VoiceAsrConfig, apply_voice_transcripts, enrich_voice_transcripts
 
 LLM_CHAT_LIMIT = 40
 LLM_MIN_MESSAGES_90D = 6
@@ -50,8 +71,31 @@ def run_analysis(
     window_days: int = 90,
     short_window_days: int = 30,
     with_llm: bool = False,
+    with_voice_asr: bool = False,
 ) -> Dict[str, Any]:
     chats, import_stats = load_chats(export_path, self_name=self_name)
+    export_root = export_path if export_path.is_dir() else export_path.parent
+    voice_asr_summary: Dict[str, Any] = {}
+    if with_voice_asr:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        voice_cache_path = output_dir / ".voice-asr-cache.json"
+        voice_cache = _load_json_mapping(voice_cache_path)
+        effective_as_of = as_of_date or end_date
+        voice_transcripts = enrich_voice_transcripts(
+            chats,
+            export_root,
+            cache=voice_cache,
+            config=VoiceAsrConfig(as_of_date=effective_as_of, window_days=window_days + 1),
+        )
+        if voice_transcripts:
+            chats = apply_voice_transcripts(chats, voice_transcripts)
+            _save_json_mapping(voice_cache_path, voice_cache)
+        voice_asr_summary = {
+            "enabled": True,
+            "chat_count": len(voice_transcripts),
+            "message_count": sum(int(item.get("voice_message_count", 0)) for item in voice_transcripts.values()),
+            "seconds_total": round(sum(float(item.get("voice_seconds_total", 0.0)) for item in voice_transcripts.values()), 2),
+        }
     temporal_config = TemporalConfig(
         self_label=self_name or "You",
         as_of_date=as_of_date,
@@ -107,6 +151,7 @@ def run_analysis(
         "llm_scores_by_date": llm_scores_by_date,
         "llm_enriched_chat_count": len(llm_scores),
         "llm_selected_chat_count": len(llm_scores),
+        "voice_asr": voice_asr_summary,
         "snapshot_now": snapshot_now_for_output,
         "weekly_snapshots": temporal_payload["weekly_snapshots"],
         "relationship_timeseries": temporal_payload["relationship_timeseries"],
@@ -174,32 +219,40 @@ def _enrich_snapshot_series(
     for index, snapshot in enumerate(snapshot_series, start=1):
         snapshot_key = snapshot["as_of_date"]
         snapshot_date = date.fromisoformat(snapshot_key)
-        if snapshot_key in llm_scores_by_date:
-            llm_scores = llm_scores_by_date[snapshot_key]
-            print(
-                f"[LLM] {index}/{total_snapshots} {snapshot_key} resumed enriched={len(llm_scores)}",
-                flush=True,
-            )
-            if llm_scores:
-                _apply_llm_to_snapshot(
-                    snapshot=snapshot,
-                    llm_scores=llm_scores,
-                    temporal_config=temporal_config,
-                    update_graph=snapshot_key == temporal_payload["analysis_config"]["as_of_date"],
-                )
-            continue
         visible_chats = _filter_chats_as_of(chats, snapshot_date)
         llm_input_chats = _select_llm_chats_for_enrichment(visible_chats, snapshot)
+        existing_scores = llm_scores_by_date.get(snapshot_key, {})
+        selected_chat_ids = {chat.chat_id for chat in llm_input_chats}
+        if existing_scores:
+            existing_scores = {
+                chat_id: payload
+                for chat_id, payload in existing_scores.items()
+                if chat_id in selected_chat_ids
+            }
+            llm_scores_by_date[snapshot_key] = dict(existing_scores)
+        pending_chats = [chat for chat in llm_input_chats if chat.chat_id not in existing_scores]
+        if existing_scores and not pending_chats:
+            print(
+                f"[LLM] {index}/{total_snapshots} {snapshot_key} resumed enriched={len(existing_scores)}",
+                flush=True,
+            )
+            _apply_llm_to_snapshot(
+                snapshot=snapshot,
+                llm_scores=existing_scores,
+                temporal_config=temporal_config,
+                update_graph=snapshot_key == temporal_payload["analysis_config"]["as_of_date"],
+            )
+            continue
         print(
-            f"[LLM] {index}/{total_snapshots} {snapshot_key} selected={len(llm_input_chats)}",
+            f"[LLM] {index}/{total_snapshots} {snapshot_key} selected={len(llm_input_chats)} resumed={len(existing_scores)} pending={len(pending_chats)}",
             flush=True,
         )
         if not llm_input_chats:
             llm_scores_by_date[snapshot_key] = {}
             _save_json_mapping(progress_path, llm_scores_by_date)
             continue
-        snapshot_scores: Dict[str, Dict[str, Any]] = {}
-        scored_count = 0
+        snapshot_scores: Dict[str, Dict[str, Any]] = dict(existing_scores)
+        scored_count = len(existing_scores)
 
         def _on_chat_scored(chat_id: str, score: Dict[str, Any], from_cache: bool) -> None:
             nonlocal scored_count
@@ -217,21 +270,23 @@ def _enrich_snapshot_series(
                 )
 
         llm_scores = enrich_private_chat_scores(
-            llm_input_chats,
+            pending_chats,
             cache=llm_response_cache,
             on_chat_scored=_on_chat_scored,
         )
-        llm_scores_by_date[snapshot_key] = llm_scores
+        merged_scores = dict(existing_scores)
+        merged_scores.update(llm_scores)
+        llm_scores_by_date[snapshot_key] = merged_scores
         _save_json_mapping(cache_path, llm_response_cache)
         _save_json_mapping(progress_path, llm_scores_by_date)
         print(
-            f"[LLM] {index}/{total_snapshots} {snapshot_key} enriched={len(llm_scores)} cache_entries={len(llm_response_cache)}",
+            f"[LLM] {index}/{total_snapshots} {snapshot_key} enriched={len(merged_scores)} cache_entries={len(llm_response_cache)}",
             flush=True,
         )
-        if llm_scores:
+        if merged_scores:
             _apply_llm_to_snapshot(
                 snapshot=snapshot,
-                llm_scores=llm_scores,
+                llm_scores=merged_scores,
                 temporal_config=temporal_config,
                 update_graph=snapshot_key == temporal_payload["analysis_config"]["as_of_date"],
             )
@@ -294,6 +349,11 @@ def _merge_llm_into_relationship(relationship: Dict[str, Any], llm_payload: Dict
     outbound = relationship["outbound"]
     inbound = relationship["inbound"]
     pair = relationship["pair"]
+    if _llm_payload_is_zero_judgment(llm_payload):
+        relationship["llm"] = dict(llm_payload)
+        relationship["llm"]["ignored_as_zero_judgment"] = True
+        relationship["drivers"] = _relationship_drivers(outbound, inbound, pair)
+        return
 
     outbound["heuristic_warmth_score"] = outbound.get("warmth_score", 0.0)
     inbound["heuristic_warmth_score"] = inbound.get("warmth_score", 0.0)
@@ -328,8 +388,14 @@ def _merge_llm_into_relationship(relationship: Dict[str, Any], llm_payload: Dict
         float(llm_payload.get("peer_to_self_formality", inbound["heuristic_formality_score"])),
         4,
     )
-    outbound["formality_score"] = _blend_metric(outbound["heuristic_formality_score"], outbound["llm_formality_score"], 0.40)
-    inbound["formality_score"] = _blend_metric(inbound["heuristic_formality_score"], inbound["llm_formality_score"], 0.40)
+    outbound["formality_score"] = min(
+        float(outbound["heuristic_formality_score"]),
+        _blend_metric(outbound["heuristic_formality_score"], outbound["llm_formality_score"], 0.40),
+    )
+    inbound["formality_score"] = min(
+        float(inbound["heuristic_formality_score"]),
+        _blend_metric(inbound["heuristic_formality_score"], inbound["llm_formality_score"], 0.40),
+    )
 
     llm_depth = round(float(llm_payload.get("depth", pair.get("depth_score", 0.0))), 4)
     outbound["heuristic_depth_score"] = outbound.get("depth_score", 0.0)
@@ -382,6 +448,8 @@ def _merge_llm_into_relationship(relationship: Dict[str, Any], llm_payload: Dict
         formality=float(outbound.get("formality_score", 0.0)),
         depth=float(outbound.get("depth_score", 0.0)),
         responsiveness=float(outbound.get("responsiveness_score") or 0.0),
+        media_intimacy=float(outbound.get("media_intimacy_score", 0.0)),
+        playfulness=float(outbound.get("media_playfulness_score", 0.0)),
     )
     inbound["warmth_index"] = _directional_warmth_index(
         warmth=float(inbound.get("warmth_score", 0.0)),
@@ -390,6 +458,8 @@ def _merge_llm_into_relationship(relationship: Dict[str, Any], llm_payload: Dict
         formality=float(inbound.get("formality_score", 0.0)),
         depth=float(inbound.get("depth_score", 0.0)),
         responsiveness=float(inbound.get("responsiveness_score") or 0.0),
+        media_intimacy=float(inbound.get("media_intimacy_score", 0.0)),
+        playfulness=float(inbound.get("media_playfulness_score", 0.0)),
     )
     pair["warmth_index_out"] = float(outbound["warmth_index"])
     pair["warmth_index_in"] = float(inbound["warmth_index"])
@@ -403,6 +473,8 @@ def _merge_llm_into_relationship(relationship: Dict[str, Any], llm_payload: Dict
         formality=float(outbound.get("formality_score", 0.0)),
         reciprocity=float(pair.get("reciprocity", 0.0)),
         stability=float(pair.get("stability_score", pair.get("continuity_score", 0.0))),
+        media_intimacy=float(outbound.get("media_intimacy_score", 0.0)),
+        media_expressiveness=float(outbound.get("media_expressiveness_score", 0.0)),
     )
     pair["bond_index_in"] = _directional_bond_index(
         warmth_index=float(pair["warmth_index_in"]),
@@ -413,12 +485,15 @@ def _merge_llm_into_relationship(relationship: Dict[str, Any], llm_payload: Dict
         formality=float(inbound.get("formality_score", 0.0)),
         reciprocity=float(pair.get("reciprocity", 0.0)),
         stability=float(pair.get("stability_score", pair.get("continuity_score", 0.0))),
+        media_intimacy=float(inbound.get("media_intimacy_score", 0.0)),
+        media_expressiveness=float(inbound.get("media_expressiveness_score", 0.0)),
     )
     pair["bond_index"] = _pair_bond_index(
         pair["bond_index_out"],
         pair["bond_index_in"],
         float(pair.get("reciprocity", 0.0)),
         float(pair.get("stability_score", pair.get("continuity_score", 0.0))),
+        float(pair.get("media_reciprocity", 0.0)),
     )
 
     heuristic_closeness = float(pair.get("closeness_score", 0.0))
@@ -471,6 +546,9 @@ def _merge_llm_into_relationship(relationship: Dict[str, Any], llm_payload: Dict
         silence_gap_days=pair.get("silence_gap_days"),
     )
     relationship["llm"] = llm_payload
+    if _llm_payload_is_zero_judgment(llm_payload):
+        relationship["llm"]["ignored_as_zero_judgment"] = True
+        return
     relationship["drivers"] = _relationship_drivers(outbound, inbound, pair)
 
 

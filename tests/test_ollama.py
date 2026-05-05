@@ -11,8 +11,9 @@ def _message(
     dt: datetime,
     text: str,
     is_outgoing: bool,
+    **kwargs,
 ) -> Message:
-    return Message(
+    payload = dict(
         chat_id="chat-1",
         chat_name="Alice",
         chat_type="private",
@@ -23,6 +24,8 @@ def _message(
         text=text,
         is_outgoing=is_outgoing,
     )
+    payload.update(kwargs)
+    return Message(**payload)
 
 
 def test_build_chat_context_uses_sessions_and_behavioral_summary() -> None:
@@ -37,6 +40,8 @@ def test_build_chat_context_uses_sessions_and_behavioral_summary() -> None:
             _message("4", "alice", "Alice", datetime(2026, 4, 3, 15, 4, tzinfo=timezone.utc), "i'm here for you", False),
             _message("5", "self", "Me", datetime(2026, 4, 20, 9, 0, tzinfo=timezone.utc), "это правда важно и очень лично", True),
             _message("6", "alice", "Alice", datetime(2026, 4, 20, 9, 7, tzinfo=timezone.utc), "держись, помогу если что", False),
+            _message("7", "self", "Me", datetime(2026, 4, 21, 9, 0, tzinfo=timezone.utc), "", True, media_kind="voice", media_duration_seconds=70, media_has_binary=True),
+            _message("8", "alice", "Alice", datetime(2026, 4, 21, 9, 3, tzinfo=timezone.utc), "", False, media_kind="sticker", sticker_emoji="❤️", media_has_binary=True),
         ],
     )
 
@@ -48,9 +53,12 @@ def test_build_chat_context_uses_sessions_and_behavioral_summary() -> None:
     assert "YOU:" in transcript
     assert "Alice:" in transcript
     stats = context["stats"]
-    assert stats["messages_total"] == 6
+    assert stats["messages_total"] == 8
     assert stats["session_count"] >= 2
     assert stats["marker_counts"]["support"] >= 1
+    assert stats["media_counts"]["voice"] == 1
+    assert stats["voice_minutes_you"] > 1.0
+    assert stats["top_sticker_emoji"][0][0] == "❤️"
 
 
 def test_build_prompt_includes_behavioral_summary_and_excerpts() -> None:

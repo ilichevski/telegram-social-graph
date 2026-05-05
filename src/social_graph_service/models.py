@@ -19,7 +19,13 @@ class Message:
     reply_to_message_id: Optional[str] = None
     media_kind: Optional[str] = None
     media_path: Optional[str] = None
+    media_thumbnail_path: Optional[str] = None
+    mime_type: Optional[str] = None
     media_duration_seconds: Optional[float] = None
+    media_width: Optional[int] = None
+    media_height: Optional[int] = None
+    media_file_size_bytes: Optional[int] = None
+    media_has_binary: bool = False
     sticker_emoji: Optional[str] = None
     raw: Dict[str, Any] = field(default_factory=dict)
 

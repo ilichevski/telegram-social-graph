@@ -121,6 +121,10 @@ Useful companion docs:
 
 - [docs/OUTPUT_FILES.md](docs/OUTPUT_FILES.md)
 - [docs/FAQ.md](docs/FAQ.md)
+- [docs/SCORING_AND_INDICES.md](docs/SCORING_AND_INDICES.md)
+- [docs/SOCIAL_GRAPH_REFERENCE.md](docs/SOCIAL_GRAPH_REFERENCE.md)
+- [docs/OPERATIONS.md](docs/OPERATIONS.md)
+- [docs/DOCUMENTATION_MAP.md](docs/DOCUMENTATION_MAP.md)
 - [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## Optional: local LLM enrichment
@@ -165,8 +169,16 @@ make setup
 make models
 make analyze
 make analyze-llm
+make sanity
+make preview
 make test
 make api
+```
+
+`make screenshots` is also available, but it expects:
+
+```bash
+OVERVIEW_SRC=/path/to/overview.png DETAIL_SRC=/path/to/detail.png make screenshots
 ```
 
 ## Main files you get
@@ -258,6 +270,33 @@ Health check:
 ```bash
 curl http://127.0.0.1:8000/healthz
 ```
+
+## Operations and sanity checks
+
+Run a quick runtime sanity check:
+
+```bash
+make sanity
+```
+
+Preview the latest report locally:
+
+```bash
+make preview
+```
+
+Refresh README screenshots:
+
+```bash
+OVERVIEW_SRC=/path/to/overview.png \
+DETAIL_SRC=/path/to/detail.png \
+make screenshots
+```
+
+Operational notes:
+
+- [docs/OPERATIONS.md](docs/OPERATIONS.md)
+- [docs/DASHBOARD_RUNTIME_NOTES.md](docs/DASHBOARD_RUNTIME_NOTES.md)
 
 ## Troubleshooting
 

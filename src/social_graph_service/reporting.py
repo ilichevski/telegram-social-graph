@@ -658,6 +658,10 @@ def render_html_report(result: GraphResult, run_summary: Dict[str, Any]) -> str:
       return snapshot?.integrated_color_score ?? (((snapshot?.warmth_index || 0) + (snapshot?.bond_index || 0)) / 2);
     }}
 
+    function clamp(value, min, max) {{
+      return Math.max(min, Math.min(max, Number(value) || 0));
+    }}
+
     function trendSymbol(deltaRatio) {{
       if (deltaRatio >= 0.35) return '↑↑';
       if (deltaRatio >= 0.12) return '↑';
@@ -713,6 +717,7 @@ def render_html_report(result: GraphResult, run_summary: Dict[str, Any]) -> str:
       const snapshot = relationshipSnapshot(series, state.selectedDate);
       if (!snapshot) return null;
       const currentWarmth = meanWarmth(snapshot);
+      const evidenceGate = snapshot.evidence_gate || (0.28 + 0.72 * clamp(snapshot.confidence_score || 0, 0, 1));
       const volume7vs28 = rateDelta(snapshot.messages_total_7d || 0, 7, snapshot.messages_total_28d || 0, 28);
       const volume28vs91 = rateDelta(snapshot.messages_total_28d || 0, 28, snapshot.messages_total_91d || 0, 91);
       const warmth7vs28 = indexFromRatio(currentWarmthWindow(snapshot, 7), currentWarmthWindow(snapshot, 28));
@@ -724,9 +729,9 @@ def render_html_report(result: GraphResult, run_summary: Dict[str, Any]) -> str:
         chat_name: series.chat_name,
         snapshot,
         currentWarmth,
-        warmthIndexAbsolute: snapshot.warmth_index || currentWarmth,
-        bondIndexAbsolute: snapshot.bond_index || snapshot.tie_strength_score || 0,
-        integratedColor: integratedColor(snapshot),
+        warmthIndexAbsolute: clamp((snapshot.warmth_index || currentWarmth) * evidenceGate, 0, 1),
+        bondIndexAbsolute: clamp((snapshot.bond_index || snapshot.tie_strength_score || 0) * evidenceGate, 0, 1),
+        integratedColor: clamp(integratedColor(snapshot) * evidenceGate, 0, 1),
         warmthIndex: warmth7vs28,
         volume7vs28,
         volume28vs91,
@@ -735,6 +740,7 @@ def render_html_report(result: GraphResult, run_summary: Dict[str, Any]) -> str:
         volumeDeltaRatio,
         trendSymbol: trendSymbol(volumeDeltaRatio),
         trendLabel: trendLabel(volumeDeltaRatio),
+        evidenceGate,
       }};
     }}
 
@@ -744,6 +750,7 @@ def render_html_report(result: GraphResult, run_summary: Dict[str, Any]) -> str:
       if (total < 8) return false;
       if (reciprocity <= 0.02) return false;
       if (total < 20 && reciprocity < 0.10) return false;
+      if ((row.snapshot.confidence_score || 0) < 0.12) return false;
       return true;
     }}
 
@@ -756,8 +763,8 @@ def render_html_report(result: GraphResult, run_summary: Dict[str, Any]) -> str:
     }}
 
     function sortMetric(row) {{
-      if (state.sort === 'warmth') return row.warmthIndexAbsolute * 1000 + row.snapshot.tie_strength_score;
-      if (state.sort === 'bond') return row.bondIndexAbsolute * 1000 + row.snapshot.tie_strength_score;
+      if (state.sort === 'warmth') return (row.warmthIndexAbsolute * Math.max(row.confidence || 0, row.evidenceGate || 0)) * 1000 + row.snapshot.tie_strength_score;
+      if (state.sort === 'bond') return (row.bondIndexAbsolute * Math.max(row.confidence || 0, row.evidenceGate || 0)) * 1000 + row.snapshot.tie_strength_score;
       if (state.sort === 'change') return Math.abs(row.volumeDeltaRatio) * 1000 + Math.abs(row.warmth7vs28 - 100) * 10 + row.snapshot.tie_strength_score;
       return row.snapshot.messages_total_90d || 0;
     }}
@@ -913,6 +920,10 @@ def render_html_report(result: GraphResult, run_summary: Dict[str, Any]) -> str:
         ['Them → warmth index', selected.snapshot.warmth_index_in || 0, 'integrated emotional warmth', false],
         ['You → support', selected.snapshot.support_out || 0, 'care / reassurance / help', false],
         ['Them → support', selected.snapshot.support_in || 0, 'care / reassurance / help', false],
+        ['You → media intimacy', selected.snapshot.media_intimacy_out || 0, 'voice / photo / sticker closeness', false],
+        ['Them → media intimacy', selected.snapshot.media_intimacy_in || 0, 'voice / photo / sticker closeness', false],
+        ['You → playfulness', selected.snapshot.media_playfulness_out || 0, 'lighter expressive media', false],
+        ['Them → playfulness', selected.snapshot.media_playfulness_in || 0, 'lighter expressive media', false],
         ['You → engagement', selected.snapshot.engagement_out || 0, 'who carries the exchange', false],
         ['Them → engagement', selected.snapshot.engagement_in || 0, 'who carries the exchange', false],
         ['You → bond index', selected.snapshot.bond_index_out || 0, 'strength from your side', false],
@@ -1118,6 +1129,10 @@ def _snapshot_to_series(snapshot_now: Dict[str, Any]) -> List[Dict[str, Any]]:
                         "support_in": inbound.get("support_score", 0),
                         "formality_out": outbound.get("formality_score", 0),
                         "formality_in": inbound.get("formality_score", 0),
+                        "media_intimacy_out": outbound.get("media_intimacy_score", 0),
+                        "media_intimacy_in": inbound.get("media_intimacy_score", 0),
+                        "media_playfulness_out": outbound.get("media_playfulness_score", 0),
+                        "media_playfulness_in": inbound.get("media_playfulness_score", 0),
                         "warmth_index_out": pair.get("warmth_index_out", outbound.get("warmth_index", 0)),
                         "warmth_index_in": pair.get("warmth_index_in", inbound.get("warmth_index", 0)),
                         "warmth_index_7d": pair.get("warmth_index_7d", 0),

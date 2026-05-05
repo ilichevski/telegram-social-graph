@@ -24,6 +24,7 @@ class AnalyzeRequest(BaseModel):
     window_days: int = 90
     short_window_days: int = 30
     with_llm: bool = False
+    with_voice_asr: bool = False
 
 
 @app.get("/healthz")
@@ -44,4 +45,5 @@ def analyze(request: AnalyzeRequest) -> dict:
         window_days=request.window_days,
         short_window_days=request.short_window_days,
         with_llm=request.with_llm,
+        with_voice_asr=request.with_voice_asr,
     )

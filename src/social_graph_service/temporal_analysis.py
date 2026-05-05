@@ -7,6 +7,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from statistics import median
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+from .media_signals import message_media_signal, signal_mean
 from .models import Chat, Edge, GraphResult, Node
 
 
@@ -287,7 +288,47 @@ def _directional_metrics(
     formality_values_7d: List[float] = []
     formality_values_28d: List[float] = []
     formality_values_91d: List[float] = []
+    media_warmth_values: List[float] = []
+    media_warmth_values_7d: List[float] = []
+    media_warmth_values_28d: List[float] = []
+    media_warmth_values_91d: List[float] = []
+    media_support_values: List[float] = []
+    media_support_values_7d: List[float] = []
+    media_support_values_28d: List[float] = []
+    media_support_values_91d: List[float] = []
+    media_tension_values: List[float] = []
+    media_tension_values_7d: List[float] = []
+    media_tension_values_28d: List[float] = []
+    media_tension_values_91d: List[float] = []
+    media_formality_values: List[float] = []
+    media_formality_values_7d: List[float] = []
+    media_formality_values_28d: List[float] = []
+    media_formality_values_91d: List[float] = []
+    media_depth_values: List[float] = []
+    media_depth_values_7d: List[float] = []
+    media_depth_values_28d: List[float] = []
+    media_depth_values_91d: List[float] = []
+    media_engagement_values: List[float] = []
+    media_engagement_values_7d: List[float] = []
+    media_engagement_values_28d: List[float] = []
+    media_engagement_values_91d: List[float] = []
+    media_intimacy_values: List[float] = []
+    media_intimacy_values_7d: List[float] = []
+    media_intimacy_values_28d: List[float] = []
+    media_intimacy_values_91d: List[float] = []
+    media_playfulness_values: List[float] = []
+    media_playfulness_values_7d: List[float] = []
+    media_playfulness_values_28d: List[float] = []
+    media_playfulness_values_91d: List[float] = []
+    media_expressiveness_values: List[float] = []
+    media_expressiveness_values_7d: List[float] = []
+    media_expressiveness_values_28d: List[float] = []
+    media_expressiveness_values_91d: List[float] = []
     media_counts: Counter[str] = Counter()
+    voice_seconds_90d = 0.0
+    captioned_media_messages_90d = 0
+    media_only_messages_90d = 0
+    media_binary_messages_90d = 0
     last_message_at: Optional[str] = None
 
     for message in direction_messages:
@@ -300,10 +341,21 @@ def _directional_metrics(
         weighted_messages += weight
         weighted_chars += text_length * weight
         warmth, tension, support, formality = _tone_scores(message.text or "")
+        media_signal = message_media_signal(message)
         warmth_values.append(warmth)
         tension_values.append(tension)
         support_values.append(support)
         formality_values.append(formality)
+        if message.media_kind:
+            media_warmth_values.append(media_signal.warmth)
+            media_support_values.append(media_signal.support)
+            media_tension_values.append(media_signal.tension)
+            media_formality_values.append(media_signal.formality)
+            media_depth_values.append(media_signal.depth)
+            media_engagement_values.append(media_signal.engagement)
+            media_intimacy_values.append(media_signal.intimacy)
+            media_playfulness_values.append(media_signal.playfulness)
+            media_expressiveness_values.append(media_signal.expressiveness)
         if age_days <= TOKEN_WINDOW_7_DAYS:
             count_7d += 1
             weighted_7d += weight
@@ -311,6 +363,16 @@ def _directional_metrics(
             tension_values_7d.append(tension)
             support_values_7d.append(support)
             formality_values_7d.append(formality)
+            if message.media_kind:
+                media_warmth_values_7d.append(media_signal.warmth)
+                media_support_values_7d.append(media_signal.support)
+                media_tension_values_7d.append(media_signal.tension)
+                media_formality_values_7d.append(media_signal.formality)
+                media_depth_values_7d.append(media_signal.depth)
+                media_engagement_values_7d.append(media_signal.engagement)
+                media_intimacy_values_7d.append(media_signal.intimacy)
+                media_playfulness_values_7d.append(media_signal.playfulness)
+                media_expressiveness_values_7d.append(media_signal.expressiveness)
         if age_days <= TOKEN_WINDOW_28_DAYS:
             count_28d += 1
             weighted_28d += weight
@@ -318,6 +380,16 @@ def _directional_metrics(
             tension_values_28d.append(tension)
             support_values_28d.append(support)
             formality_values_28d.append(formality)
+            if message.media_kind:
+                media_warmth_values_28d.append(media_signal.warmth)
+                media_support_values_28d.append(media_signal.support)
+                media_tension_values_28d.append(media_signal.tension)
+                media_formality_values_28d.append(media_signal.formality)
+                media_depth_values_28d.append(media_signal.depth)
+                media_engagement_values_28d.append(media_signal.engagement)
+                media_intimacy_values_28d.append(media_signal.intimacy)
+                media_playfulness_values_28d.append(media_signal.playfulness)
+                media_expressiveness_values_28d.append(media_signal.expressiveness)
         if age_days <= TOKEN_WINDOW_30_DAYS:
             count_30d += 1
             weighted_30d += weight
@@ -327,6 +399,16 @@ def _directional_metrics(
             tension_values_91d.append(tension)
             support_values_91d.append(support)
             formality_values_91d.append(formality)
+            if message.media_kind:
+                media_warmth_values_91d.append(media_signal.warmth)
+                media_support_values_91d.append(media_signal.support)
+                media_tension_values_91d.append(media_signal.tension)
+                media_formality_values_91d.append(media_signal.formality)
+                media_depth_values_91d.append(media_signal.depth)
+                media_engagement_values_91d.append(media_signal.engagement)
+                media_intimacy_values_91d.append(media_signal.intimacy)
+                media_playfulness_values_91d.append(media_signal.playfulness)
+                media_expressiveness_values_91d.append(media_signal.expressiveness)
         if age_days <= config.window_days:
             count_90d += 1
             weighted_90d += weight
@@ -352,12 +434,25 @@ def _directional_metrics(
         if message.media_kind:
             counts["media_messages"] += 1
             media_counts[message.media_kind] += 1
+            if age_days <= config.window_days:
+                if (message.text or "").strip():
+                    captioned_media_messages_90d += 1
+                else:
+                    media_only_messages_90d += 1
+                if message.media_has_binary:
+                    media_binary_messages_90d += 1
+                if message.media_kind in {"voice", "audio", "video", "gif"}:
+                    voice_seconds_90d += float(message.media_duration_seconds or 0.0)
         last_message_at = max(last_message_at or "", _isoformat(message.timestamp))
 
     reply_metrics = _response_metrics(all_messages, direction_messages, as_of_date, config.max_response_gap_hours)
     initiation_share = _initiation_share(all_messages, direction_messages, as_of_date)
     media_messages = int(counts.get("media_messages", 0))
     rich_media_messages = sum(media_counts[kind] for kind in {"photo", "voice", "video", "gif", "sticker", "audio"} if kind in media_counts)
+    photo_messages_90d = int(media_counts.get("photo", 0))
+    voice_messages_90d = int(media_counts.get("voice", 0) + media_counts.get("audio", 0))
+    gif_messages_90d = int(media_counts.get("gif", 0))
+    sticker_messages_90d = int(media_counts.get("sticker", 0))
     avg_chars_90d = round(chars_90d / count_90d, 2) if count_90d else 0.0
     meaningful_ratio_90d = round(meaningful_messages_90d / count_90d, 4) if count_90d else 0.0
     long_ratio_90d = round(long_messages_90d / count_90d, 4) if count_90d else 0.0
@@ -366,37 +461,91 @@ def _directional_metrics(
     depth_marker_ratio_90d = round(depth_marker_messages_90d / count_90d, 4) if count_90d else 0.0
     support_marker_ratio_90d = round(support_marker_messages_90d / count_90d, 4) if count_90d else 0.0
     formal_marker_ratio_90d = round(formal_marker_messages_90d / count_90d, 4) if count_90d else 0.0
+    captioned_media_ratio_90d = round(captioned_media_messages_90d / media_messages, 4) if media_messages else 0.0
+    media_only_ratio_90d = round(media_only_messages_90d / media_messages, 4) if media_messages else 0.0
+    media_binary_ratio_90d = round(media_binary_messages_90d / media_messages, 4) if media_messages else 0.0
+    voice_minutes_90d = round(voice_seconds_90d / 60.0, 2) if voice_seconds_90d else 0.0
+    media_warmth_mean = signal_mean(media_warmth_values)
+    media_support_mean = signal_mean(media_support_values)
+    media_tension_mean = signal_mean(media_tension_values)
+    media_formality_mean = signal_mean(media_formality_values)
+    media_depth_mean = signal_mean(media_depth_values)
+    media_engagement_mean = signal_mean(media_engagement_values)
+    media_intimacy_mean = signal_mean(media_intimacy_values)
+    media_playfulness_mean = signal_mean(media_playfulness_values)
+    media_expressiveness_mean = signal_mean(media_expressiveness_values)
     avg_chars_score = min(1.0, avg_chars_90d / 220.0) if count_90d else 0.0
     depth_score = round(
         min(
             1.0,
             avg_chars_score * 0.24
-            + meaningful_ratio_90d * 0.22
-            + long_ratio_90d * 0.20
+            + meaningful_ratio_90d * 0.20
+            + long_ratio_90d * 0.16
             + question_ratio_90d * 0.14
-            + depth_marker_ratio_90d * 0.20,
+            + depth_marker_ratio_90d * 0.16
+            + media_intimacy_mean * 0.10,
         ),
         4,
     )
     engagement_signal = round(
         min(
             1.0,
-            float(initiation_share) * 0.42
+            float(initiation_share) * 0.38
             + question_ratio_90d * 0.18
-            + meaningful_ratio_90d * 0.20
-            + (reply_metrics["responsiveness_score"] or 0.0) * 0.20,
+            + meaningful_ratio_90d * 0.18
+            + (reply_metrics["responsiveness_score"] or 0.0) * 0.16
+            + media_expressiveness_mean * 0.10,
         ),
         4,
     )
     support_mean = round(sum(support_values) / len(support_values), 4) if support_values else 0.0
     formality_mean = round(sum(formality_values) / len(formality_values), 4) if formality_values else 0.0
+    signal_confidence = _directional_signal_confidence(
+        count_90d=count_90d,
+        count_28d=count_28d,
+        chars_90d=chars_90d,
+        meaningful_messages_90d=meaningful_messages_90d,
+        media_messages_90d=media_messages,
+    )
+    warmth_score_7d = _blend_window_signal(
+        signal_mean(warmth_values_7d),
+        signal_mean(media_warmth_values_7d),
+        signal_mean(media_playfulness_values_7d),
+    )
+    warmth_score_28d = _blend_window_signal(
+        signal_mean(warmth_values_28d),
+        signal_mean(media_warmth_values_28d),
+        signal_mean(media_playfulness_values_28d),
+    )
+    warmth_score_91d = _blend_window_signal(
+        signal_mean(warmth_values_91d),
+        signal_mean(media_warmth_values_91d),
+        signal_mean(media_playfulness_values_91d),
+    )
+    warmth_score = _blend_window_signal(
+        signal_mean(warmth_values),
+        media_warmth_mean,
+        media_playfulness_mean,
+    )
+    tension_score_7d = _blend_linear_signal(signal_mean(tension_values_7d), signal_mean(media_tension_values_7d), 0.85, 0.15)
+    tension_score_28d = _blend_linear_signal(signal_mean(tension_values_28d), signal_mean(media_tension_values_28d), 0.85, 0.15)
+    tension_score_91d = _blend_linear_signal(signal_mean(tension_values_91d), signal_mean(media_tension_values_91d), 0.85, 0.15)
+    tension_score = _blend_linear_signal(signal_mean(tension_values), media_tension_mean, 0.85, 0.15)
+    support_score_7d = _blend_linear_signal(signal_mean(support_values_7d), signal_mean(media_support_values_7d), 0.72, 0.28)
+    support_score_28d = _blend_linear_signal(signal_mean(support_values_28d), signal_mean(media_support_values_28d), 0.72, 0.28)
+    support_score_91d = _blend_linear_signal(signal_mean(support_values_91d), signal_mean(media_support_values_91d), 0.72, 0.28)
+    formality_score_7d = _blend_linear_signal(signal_mean(formality_values_7d), signal_mean(media_formality_values_7d), 0.78, 0.22)
+    formality_score_28d = _blend_linear_signal(signal_mean(formality_values_28d), signal_mean(media_formality_values_28d), 0.78, 0.22)
+    formality_score_91d = _blend_linear_signal(signal_mean(formality_values_91d), signal_mean(media_formality_values_91d), 0.78, 0.22)
     support_score = round(
         min(
             1.0,
             support_marker_ratio_90d * 3.2
-            + support_mean * 1.4
+            + support_mean * 1.15
             + depth_marker_ratio_90d * 0.25
-            + max(0.0, (round(sum(warmth_values) / len(warmth_values), 4) if warmth_values else 0.0) - 0.5) * 0.35,
+            + media_support_mean * 0.95
+            + media_intimacy_mean * 0.22
+            + max(0.0, warmth_score - 0.5) * 0.35,
         ),
         4,
     )
@@ -405,41 +554,53 @@ def _directional_metrics(
             1.0,
             formal_marker_ratio_90d * 2.8
             + formality_mean * 1.2
+            + media_formality_mean * 0.8
             + short_ratio_90d * 0.15,
         ),
         4,
     )
+    warmth_score = _evidence_shrink(warmth_score, signal_confidence, floor=0.35)
+    support_score = _evidence_shrink(support_score, signal_confidence, floor=0.4)
+    formality_score = _evidence_shrink(formality_score, signal_confidence, floor=0.34)
     warmth_index_7d = _directional_warmth_index(
-        warmth=round(sum(warmth_values_7d) / len(warmth_values_7d), 4) if warmth_values_7d else 0.0,
-        support=round(sum(support_values_7d) / len(support_values_7d), 4) if support_values_7d else 0.0,
-        tension=round(sum(tension_values_7d) / len(tension_values_7d), 4) if tension_values_7d else 0.0,
-        formality=round(sum(formality_values_7d) / len(formality_values_7d), 4) if formality_values_7d else 0.0,
-        depth=0.0,
+        warmth=warmth_score_7d,
+        support=support_score_7d,
+        tension=tension_score_7d,
+        formality=formality_score_7d,
+        depth=_blend_linear_signal(0.0, signal_mean(media_depth_values_7d), 0.55, 0.45),
         responsiveness=0.0,
+        media_intimacy=signal_mean(media_intimacy_values_7d),
+        playfulness=signal_mean(media_playfulness_values_7d),
     )
     warmth_index_28d = _directional_warmth_index(
-        warmth=round(sum(warmth_values_28d) / len(warmth_values_28d), 4) if warmth_values_28d else 0.0,
-        support=round(sum(support_values_28d) / len(support_values_28d), 4) if support_values_28d else 0.0,
-        tension=round(sum(tension_values_28d) / len(tension_values_28d), 4) if tension_values_28d else 0.0,
-        formality=round(sum(formality_values_28d) / len(formality_values_28d), 4) if formality_values_28d else 0.0,
-        depth=0.0,
+        warmth=warmth_score_28d,
+        support=support_score_28d,
+        tension=tension_score_28d,
+        formality=formality_score_28d,
+        depth=_blend_linear_signal(0.0, signal_mean(media_depth_values_28d), 0.55, 0.45),
         responsiveness=0.0,
+        media_intimacy=signal_mean(media_intimacy_values_28d),
+        playfulness=signal_mean(media_playfulness_values_28d),
     )
     warmth_index_91d = _directional_warmth_index(
-        warmth=round(sum(warmth_values_91d) / len(warmth_values_91d), 4) if warmth_values_91d else 0.0,
-        support=round(sum(support_values_91d) / len(support_values_91d), 4) if support_values_91d else 0.0,
-        tension=round(sum(tension_values_91d) / len(tension_values_91d), 4) if tension_values_91d else 0.0,
-        formality=round(sum(formality_values_91d) / len(formality_values_91d), 4) if formality_values_91d else 0.0,
-        depth=0.0,
+        warmth=warmth_score_91d,
+        support=support_score_91d,
+        tension=tension_score_91d,
+        formality=formality_score_91d,
+        depth=signal_mean(media_depth_values_91d),
         responsiveness=0.0,
+        media_intimacy=signal_mean(media_intimacy_values_91d),
+        playfulness=signal_mean(media_playfulness_values_91d),
     )
     warmth_index = _directional_warmth_index(
-        warmth=round(sum(warmth_values) / len(warmth_values), 4) if warmth_values else 0.0,
+        warmth=warmth_score,
         support=support_score,
-        tension=round(sum(tension_values) / len(tension_values), 4) if tension_values else 0.0,
+        tension=tension_score,
         formality=formality_score,
         depth=depth_score,
         responsiveness=reply_metrics["responsiveness_score"] or 0.0,
+        media_intimacy=media_intimacy_mean,
+        playfulness=media_playfulness_mean,
     )
 
     return {
@@ -458,19 +619,19 @@ def _directional_metrics(
         "weighted_messages_30d": round(weighted_30d, 4),
         "weighted_messages_90d": round(weighted_90d, 4),
         "weighted_chars": round(weighted_chars, 4),
-        "warmth_score_7d": round(sum(warmth_values_7d) / len(warmth_values_7d), 4) if warmth_values_7d else 0.0,
-        "warmth_score_28d": round(sum(warmth_values_28d) / len(warmth_values_28d), 4) if warmth_values_28d else 0.0,
-        "warmth_score_91d": round(sum(warmth_values_91d) / len(warmth_values_91d), 4) if warmth_values_91d else 0.0,
-        "warmth_score": round(sum(warmth_values) / len(warmth_values), 4) if warmth_values else 0.0,
-        "tension_score": round(sum(tension_values) / len(tension_values), 4) if tension_values else 0.0,
-        "support_score_7d": round(sum(support_values_7d) / len(support_values_7d), 4) if support_values_7d else 0.0,
-        "support_score_28d": round(sum(support_values_28d) / len(support_values_28d), 4) if support_values_28d else 0.0,
-        "support_score_91d": round(sum(support_values_91d) / len(support_values_91d), 4) if support_values_91d else 0.0,
-        "support_score": round(sum(support_values) / len(support_values), 4) if support_values else 0.0,
-        "formality_score_7d": round(sum(formality_values_7d) / len(formality_values_7d), 4) if formality_values_7d else 0.0,
-        "formality_score_28d": round(sum(formality_values_28d) / len(formality_values_28d), 4) if formality_values_28d else 0.0,
-        "formality_score_91d": round(sum(formality_values_91d) / len(formality_values_91d), 4) if formality_values_91d else 0.0,
-        "formality_score": round(sum(formality_values) / len(formality_values), 4) if formality_values else 0.0,
+        "warmth_score_7d": warmth_score_7d,
+        "warmth_score_28d": warmth_score_28d,
+        "warmth_score_91d": warmth_score_91d,
+        "warmth_score": warmth_score,
+        "tension_score": tension_score,
+        "support_score_7d": support_score_7d,
+        "support_score_28d": support_score_28d,
+        "support_score_91d": support_score_91d,
+        "support_score_density": support_mean,
+        "signal_confidence": signal_confidence,
+        "formality_score_7d": formality_score_7d,
+        "formality_score_28d": formality_score_28d,
+        "formality_score_91d": formality_score_91d,
         "median_response_minutes": reply_metrics["median_response_minutes"],
         "responsiveness_score": reply_metrics["responsiveness_score"],
         "session_initiation_share": initiation_share,
@@ -484,7 +645,6 @@ def _directional_metrics(
         "formal_marker_ratio_90d": formal_marker_ratio_90d,
         "depth_score": depth_score,
         "engagement_signal": engagement_signal,
-        "support_score_density": support_mean,
         "formality_score_density": formality_mean,
         "support_score": support_score,
         "formality_score": formality_score,
@@ -492,6 +652,23 @@ def _directional_metrics(
         "warmth_index_28d": warmth_index_28d,
         "warmth_index_91d": warmth_index_91d,
         "warmth_index": warmth_index,
+        "media_warmth_score": media_warmth_mean,
+        "media_support_score": media_support_mean,
+        "media_tension_score": media_tension_mean,
+        "media_formality_score": media_formality_mean,
+        "media_depth_score": media_depth_mean,
+        "media_engagement_score": media_engagement_mean,
+        "media_intimacy_score": media_intimacy_mean,
+        "media_playfulness_score": media_playfulness_mean,
+        "media_expressiveness_score": media_expressiveness_mean,
+        "voice_minutes_90d": voice_minutes_90d,
+        "photo_messages_90d": photo_messages_90d,
+        "voice_messages_90d": voice_messages_90d,
+        "gif_messages_90d": gif_messages_90d,
+        "sticker_messages_90d": sticker_messages_90d,
+        "captioned_media_ratio_90d": captioned_media_ratio_90d,
+        "media_only_ratio_90d": media_only_ratio_90d,
+        "media_binary_ratio_90d": media_binary_ratio_90d,
         "media_messages": media_messages,
         "media_breakdown": dict(media_counts),
         "rich_media_ratio": round(rich_media_messages / max(len(direction_messages), 1), 4) if direction_messages else 0.0,
@@ -519,6 +696,9 @@ def _pair_metrics(
     mutual_tension = round((float(outbound["tension_score"]) + float(inbound["tension_score"])) / 2.0, 4)
     mutual_support = round((float(outbound["support_score"]) + float(inbound["support_score"])) / 2.0, 4)
     mutual_formality = round((float(outbound["formality_score"]) + float(inbound["formality_score"])) / 2.0, 4)
+    mutual_media_intimacy = round((float(outbound["media_intimacy_score"]) + float(inbound["media_intimacy_score"])) / 2.0, 4)
+    mutual_media_expressiveness = round((float(outbound["media_expressiveness_score"]) + float(inbound["media_expressiveness_score"])) / 2.0, 4)
+    mutual_media_playfulness = round((float(outbound["media_playfulness_score"]) + float(inbound["media_playfulness_score"])) / 2.0, 4)
     mutual_responsiveness = _mean_defined(
         [outbound.get("responsiveness_score"), inbound.get("responsiveness_score")]
     )
@@ -529,6 +709,11 @@ def _pair_metrics(
     continuity_score = _continuity_score(all_messages, as_of_date, config.window_days)
     recency_score = _recency_score(outbound, inbound)
     volume_score = round(min(1.0, math.log1p(max(weighted_messages_total, 0.0)) / 6.0), 4)
+    media_reciprocity = _ratio(int(outbound["media_messages"]), int(inbound["media_messages"]))
+    voice_reciprocity = _ratio(
+        int(round(float(outbound.get("voice_minutes_90d", 0.0)) * 10.0)),
+        int(round(float(inbound.get("voice_minutes_90d", 0.0)) * 10.0)),
+    )
     stability_score = round(
         min(
             1.0,
@@ -582,7 +767,28 @@ def _pair_metrics(
     warmth_index_7d = round((float(outbound["warmth_index_7d"]) + float(inbound["warmth_index_7d"])) / 2.0, 4)
     warmth_index_28d = round((float(outbound["warmth_index_28d"]) + float(inbound["warmth_index_28d"])) / 2.0, 4)
     warmth_index_91d = round((float(outbound["warmth_index_91d"]) + float(inbound["warmth_index_91d"])) / 2.0, 4)
-    warmth_index = _pair_warmth_index(warmth_index_out, warmth_index_in)
+    message_confidence = min(1.0, math.log1p(messages_total) / math.log1p(160.0)) if messages_total > 0 else 0.0
+    response_coverage = 0.0
+    if outbound.get("responsiveness_score") is not None:
+        response_coverage += 0.5
+    if inbound.get("responsiveness_score") is not None:
+        response_coverage += 0.5
+    confidence_score = round(
+        min(
+            1.0,
+            message_confidence * 0.45
+            + continuity_score * 0.18
+            + min(1.0, reciprocity + 0.08) * 0.12
+            + depth_score * 0.10
+            + response_coverage * 0.10
+            + mutual_media_intimacy * 0.07
+            + media_reciprocity * 0.03
+            + min(1.0, weighted_messages_total / 120.0) * 0.05,
+        ),
+        4,
+    )
+    evidence_gate = _pair_evidence_gate(messages_total, confidence_score, continuity_score)
+    warmth_index = round(_pair_warmth_index(warmth_index_out, warmth_index_in) * evidence_gate, 4)
     bond_index_out = _directional_bond_index(
         warmth_index=warmth_index_out,
         engagement=engagement_out,
@@ -592,6 +798,8 @@ def _pair_metrics(
         formality=float(outbound["formality_score"]),
         reciprocity=reciprocity,
         stability=stability_score,
+        media_intimacy=float(outbound["media_intimacy_score"]),
+        media_expressiveness=float(outbound["media_expressiveness_score"]),
     )
     bond_index_in = _directional_bond_index(
         warmth_index=warmth_index_in,
@@ -602,27 +810,29 @@ def _pair_metrics(
         formality=float(inbound["formality_score"]),
         reciprocity=reciprocity,
         stability=stability_score,
+        media_intimacy=float(inbound["media_intimacy_score"]),
+        media_expressiveness=float(inbound["media_expressiveness_score"]),
     )
-    bond_index = _pair_bond_index(bond_index_out, bond_index_in, reciprocity, stability_score)
-    integrated_color_score = _integrated_color_score(warmth_index, bond_index)
-    response_coverage = 0.0
-    if outbound.get("responsiveness_score") is not None:
-        response_coverage += 0.5
-    if inbound.get("responsiveness_score") is not None:
-        response_coverage += 0.5
-    message_confidence = min(1.0, math.log1p(messages_total) / math.log1p(160.0)) if messages_total > 0 else 0.0
-    confidence_score = round(
-        min(
-            1.0,
-            message_confidence * 0.45
-            + continuity_score * 0.18
-            + min(1.0, reciprocity + 0.08) * 0.12
-            + depth_score * 0.10
-            + response_coverage * 0.10
-            + min(1.0, weighted_messages_total / 120.0) * 0.05,
-        ),
+    bond_index = round(
+        _pair_bond_index(
+            bond_index_out,
+            bond_index_in,
+            reciprocity,
+            stability_score,
+            media_reciprocity=media_reciprocity,
+        )
+        * evidence_gate,
         4,
     )
+    mutual_support = round(mutual_support * evidence_gate, 4)
+    mutual_formality = round(mutual_formality * evidence_gate, 4)
+    integrated_color_score = _integrated_color_score(warmth_index, bond_index)
+    warmth_index = round(warmth_index * evidence_gate, 4)
+    bond_index = round(bond_index * evidence_gate, 4)
+    mutual_support = round(mutual_support * evidence_gate, 4)
+    mutual_formality = round(mutual_formality * evidence_gate, 4)
+    integrated_color_score = _integrated_color_score(warmth_index, bond_index)
+
     closeness_score = round(
         reciprocity * 0.30
         + mutual_warmth * 0.20
@@ -669,7 +879,12 @@ def _pair_metrics(
         "mutual_tension": mutual_tension,
         "mutual_support": mutual_support,
         "mutual_formality": mutual_formality,
+        "mutual_media_intimacy": mutual_media_intimacy,
+        "mutual_media_expressiveness": mutual_media_expressiveness,
+        "mutual_media_playfulness": mutual_media_playfulness,
         "mutual_responsiveness": mutual_responsiveness,
+        "media_reciprocity": media_reciprocity,
+        "voice_reciprocity": voice_reciprocity,
         "warmth_index_out": warmth_index_out,
         "warmth_index_in": warmth_index_in,
         "warmth_index_7d": warmth_index_7d,
@@ -687,6 +902,8 @@ def _pair_metrics(
         "bond_index": bond_index,
         "integrated_color_score": integrated_color_score,
         "confidence_score": confidence_score,
+        "evidence_gate": evidence_gate,
+        "evidence_gate": evidence_gate,
         "recency_score": recency_score,
         "volume_score": volume_score,
         "closeness_score": closeness_score,
@@ -699,18 +916,24 @@ def _pair_metrics(
 
 
 def _build_network_snapshot(relationships: List[Dict[str, Any]], as_of_date: date) -> Dict[str, Any]:
+    current_relationships = [
+        relationship
+        for relationship in relationships
+        if relationship.get("pair", {}).get("messages_total_90d", 0) > 0
+    ]
+    source_relationships = current_relationships or relationships
     status_counts = Counter(relationship["pair"]["status"] for relationship in relationships)
     active_relationships = sum(1 for relationship in relationships if relationship["pair"]["status"] in ACTIVE_STATUSES)
-    mean_closeness = _mean_defined([relationship["pair"]["closeness_score"] for relationship in relationships])
-    mean_reciprocity = _mean_defined([relationship["pair"]["reciprocity"] for relationship in relationships])
-    mean_mutual_warmth = _mean_defined([relationship["pair"]["mutual_warmth"] for relationship in relationships])
-    mean_warmth_index = _mean_defined([relationship["pair"]["warmth_index"] for relationship in relationships])
-    mean_bond_index = _mean_defined([relationship["pair"]["bond_index"] for relationship in relationships])
+    mean_closeness = _mean_defined([relationship["pair"]["closeness_score"] for relationship in source_relationships])
+    mean_reciprocity = _mean_defined([relationship["pair"]["reciprocity"] for relationship in source_relationships])
+    mean_mutual_warmth = _mean_defined([relationship["pair"]["mutual_warmth"] for relationship in source_relationships])
+    mean_warmth_index = _mean_defined([relationship["pair"]["warmth_index"] for relationship in source_relationships])
+    mean_bond_index = _mean_defined([relationship["pair"]["bond_index"] for relationship in source_relationships])
     mean_mutual_responsiveness = _mean_defined(
-        [relationship["pair"]["mutual_responsiveness"] for relationship in relationships]
+        [relationship["pair"]["mutual_responsiveness"] for relationship in source_relationships]
     )
 
-    top_relationship_ids = [relationship["peer_id"] for relationship in relationships[:CURRENT_TIE_TOP_LIMIT]]
+    top_relationship_ids = [relationship["peer_id"] for relationship in source_relationships[:CURRENT_TIE_TOP_LIMIT]]
     return {
         "as_of_date": as_of_date.isoformat(),
         "relationship_count": len(relationships),
@@ -759,6 +982,10 @@ def _relationship_to_edges(relationship: Dict[str, Any], config: TemporalConfig)
                 "responsiveness_score": outbound["responsiveness_score"],
                 "media_messages": outbound["media_messages"],
                 "media_breakdown": outbound["media_breakdown"],
+                "media_intimacy_score": outbound["media_intimacy_score"],
+                "media_playfulness_score": outbound["media_playfulness_score"],
+                "media_expressiveness_score": outbound["media_expressiveness_score"],
+                "voice_minutes_90d": outbound["voice_minutes_90d"],
                 "rich_media_ratio": outbound["rich_media_ratio"],
                 "closeness_score": pair["closeness_score"],
                 "tie_strength": pair["tie_strength_score"],
@@ -781,6 +1008,10 @@ def _relationship_to_edges(relationship: Dict[str, Any], config: TemporalConfig)
                 "responsiveness_score": inbound["responsiveness_score"],
                 "media_messages": inbound["media_messages"],
                 "media_breakdown": inbound["media_breakdown"],
+                "media_intimacy_score": inbound["media_intimacy_score"],
+                "media_playfulness_score": inbound["media_playfulness_score"],
+                "media_expressiveness_score": inbound["media_expressiveness_score"],
+                "voice_minutes_90d": inbound["voice_minutes_90d"],
                 "rich_media_ratio": inbound["rich_media_ratio"],
                 "closeness_score": pair["closeness_score"],
                 "tie_strength": pair["tie_strength_score"],
@@ -828,6 +1059,12 @@ def _build_relationship_timeseries(snapshot_series: List[Dict[str, Any]]) -> Lis
                     "support_in": inbound["support_score"],
                     "formality_out": outbound["formality_score"],
                     "formality_in": inbound["formality_score"],
+                    "media_intimacy_out": outbound["media_intimacy_score"],
+                    "media_intimacy_in": inbound["media_intimacy_score"],
+                    "media_playfulness_out": outbound["media_playfulness_score"],
+                    "media_playfulness_in": inbound["media_playfulness_score"],
+                    "voice_minutes_out": outbound["voice_minutes_90d"],
+                    "voice_minutes_in": inbound["voice_minutes_90d"],
                     "warmth_index_out": pair["warmth_index_out"],
                     "warmth_index_in": pair["warmth_index_in"],
                     "warmth_index_7d": pair["warmth_index_7d"],
@@ -848,6 +1085,9 @@ def _build_relationship_timeseries(snapshot_series: List[Dict[str, Any]]) -> Lis
                     "mutual_tension": pair["mutual_tension"],
                     "mutual_support": pair["mutual_support"],
                     "mutual_formality": pair["mutual_formality"],
+                    "mutual_media_intimacy": pair["mutual_media_intimacy"],
+                    "mutual_media_playfulness": pair["mutual_media_playfulness"],
+                    "media_reciprocity": pair["media_reciprocity"],
                     "integrated_color_score": pair["integrated_color_score"],
                     "confidence_score": pair["confidence_score"],
                     "reciprocity": pair["reciprocity"],
@@ -1085,6 +1325,31 @@ def _continuity_score(messages: List[Any], as_of_date: date, window_days: int) -
     return round(min(1.0, len(weekly_activity) / expected_weeks), 4)
 
 
+def _directional_signal_confidence(
+    *,
+    count_90d: int,
+    count_28d: int,
+    chars_90d: int,
+    meaningful_messages_90d: int,
+    media_messages_90d: int,
+) -> float:
+    return round(
+        min(
+            1.0,
+            (min(1.0, math.log1p(max(count_90d, 0)) / math.log1p(36.0)) * 0.46)
+            + (min(1.0, max(chars_90d, 0) / 1200.0) * 0.18)
+            + (min(1.0, max(count_28d, 0) / 12.0) * 0.18)
+            + (min(1.0, max(meaningful_messages_90d, 0) / 10.0) * 0.12)
+            + (min(1.0, max(media_messages_90d, 0) / 8.0) * 0.06),
+        ),
+        4,
+    )
+
+
+def _evidence_shrink(value: float, confidence: float, *, floor: float) -> float:
+    return round(float(value) * (float(floor) + (1.0 - float(floor)) * max(0.0, min(1.0, float(confidence)))), 4)
+
+
 def _recency_score(outbound: Dict[str, Any], inbound: Dict[str, Any]) -> float:
     weighted_30d = float(outbound["weighted_messages_30d"]) + float(inbound["weighted_messages_30d"])
     weighted_90d = float(outbound["weighted_messages_90d"]) + float(inbound["weighted_messages_90d"])
@@ -1092,6 +1357,19 @@ def _recency_score(outbound: Dict[str, Any], inbound: Dict[str, Any]) -> float:
         max(min(1.0, weighted_30d / 40.0), min(1.0, weighted_90d / 120.0)),
         4,
     )
+
+
+def _pair_evidence_gate(messages_total: int, confidence_score: float, continuity_score: float) -> float:
+    if messages_total <= 0:
+        return 0.0
+    message_component = min(1.0, math.log1p(max(messages_total, 0)) / math.log1p(48.0))
+    confidence_component = max(0.0, min(1.0, confidence_score))
+    continuity_component = max(0.0, min(1.0, continuity_score))
+    blended = min(
+        1.0,
+        (message_component * 0.55) + (confidence_component * 0.30) + (continuity_component * 0.15),
+    )
+    return round(0.28 + (0.72 * blended), 4)
 
 
 def _directional_warmth_index(
@@ -1102,16 +1380,20 @@ def _directional_warmth_index(
     formality: float,
     depth: float,
     responsiveness: float,
+    media_intimacy: float,
+    playfulness: float,
 ) -> float:
     return round(
         min(
             1.0,
-            max(0.0, warmth) * 0.34
-            + max(0.0, support) * 0.24
-            + max(0.0, 1.0 - tension) * 0.18
-            + max(0.0, 1.0 - formality) * 0.12
-            + max(0.0, depth) * 0.08
-            + max(0.0, responsiveness) * 0.04,
+            max(0.0, warmth) * 0.28
+            + max(0.0, support) * 0.20
+            + max(0.0, 1.0 - tension) * 0.15
+            + max(0.0, 1.0 - formality) * 0.08
+            + max(0.0, depth) * 0.10
+            + max(0.0, responsiveness) * 0.06
+            + max(0.0, media_intimacy) * 0.08
+            + max(0.0, playfulness) * 0.05,
         ),
         4,
     )
@@ -1131,30 +1413,35 @@ def _directional_bond_index(
     formality: float,
     reciprocity: float,
     stability: float,
+    media_intimacy: float,
+    media_expressiveness: float,
 ) -> float:
     return round(
         min(
             1.0,
-            max(0.0, engagement) * 0.26
-            + max(0.0, responsiveness) * 0.18
-            + max(0.0, depth) * 0.15
-            + max(0.0, warmth_index) * 0.12
-            + max(0.0, support) * 0.11
+            max(0.0, engagement) * 0.22
+            + max(0.0, responsiveness) * 0.14
+            + max(0.0, depth) * 0.13
+            + max(0.0, warmth_index) * 0.14
+            + max(0.0, support) * 0.09
             + max(0.0, 1.0 - formality) * 0.06
             + max(0.0, reciprocity) * 0.06
-            + max(0.0, stability) * 0.06,
+            + max(0.0, stability) * 0.08
+            + max(0.0, media_intimacy) * 0.05
+            + max(0.0, media_expressiveness) * 0.03,
         ),
         4,
     )
 
 
-def _pair_bond_index(left: float, right: float, reciprocity: float, stability: float) -> float:
+def _pair_bond_index(left: float, right: float, reciprocity: float, stability: float, media_reciprocity: float) -> float:
     return round(
         min(
             1.0,
-            ((float(left) + float(right)) / 2.0) * 0.72
-            + float(reciprocity) * 0.16
-            + float(stability) * 0.12,
+            ((float(left) + float(right)) / 2.0) * 0.68
+            + float(reciprocity) * 0.14
+            + float(stability) * 0.10
+            + float(media_reciprocity) * 0.08,
         ),
         4,
     )
@@ -1162,6 +1449,14 @@ def _pair_bond_index(left: float, right: float, reciprocity: float, stability: f
 
 def _integrated_color_score(warmth_index: float, bond_index: float) -> float:
     return round(min(1.0, float(warmth_index) * 0.48 + float(bond_index) * 0.52), 4)
+
+
+def _blend_linear_signal(primary: float, secondary: float, primary_weight: float, secondary_weight: float) -> float:
+    return round(min(1.0, max(0.0, primary) * primary_weight + max(0.0, secondary) * secondary_weight), 4)
+
+
+def _blend_window_signal(primary: float, media: float, playfulness: float) -> float:
+    return round(min(1.0, max(0.0, primary) * 0.78 + max(0.0, media) * 0.15 + max(0.0, playfulness) * 0.07), 4)
 
 
 def _ratio(left: int, right: int) -> float:

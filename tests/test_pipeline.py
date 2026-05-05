@@ -154,3 +154,63 @@ def test_enrich_snapshot_series_resumes_from_progress(tmp_path, monkeypatch) -> 
 
     assert len(resumed) == len(payload["snapshot_series"])
     assert calls == []
+
+
+def test_enrich_snapshot_series_resumes_partial_snapshot(tmp_path, monkeypatch) -> None:
+    chat, config, payload = _build_payload()
+    second_chat = Chat(
+        chat_id="chat-2",
+        name="Bob",
+        chat_type="private",
+        messages=[
+            _message("b1", "self", "Me", datetime(2026, 4, 18, 11, 0, tzinfo=timezone.utc), "thanks", True),
+            _message("b2", "bob", "Bob", datetime(2026, 4, 18, 11, 4, tzinfo=timezone.utc), "love", False),
+            _message("b3", "self", "Me", datetime(2026, 4, 25, 11, 0, tzinfo=timezone.utc), "you matter", True),
+            _message("b4", "bob", "Bob", datetime(2026, 4, 25, 11, 8, tzinfo=timezone.utc), "miss you", False),
+        ],
+    )
+    payload = analyze_temporal([chat, second_chat], config)
+    target_snapshot = next(snapshot for snapshot in payload["snapshot_series"] if len(snapshot["relationships"]) >= 2)
+    first_snapshot_key = target_snapshot["as_of_date"]
+    progress_path = tmp_path / ".llm-progress.json"
+    progress_path.write_text(
+        '{"%s":{"chat-1":{"self_to_peer_warmth":0.1}}}' % first_snapshot_key,
+        encoding="utf-8",
+    )
+    calls: list[list[str]] = []
+
+    def fake_enrich(chats, cache=None, config=None, on_chat_scored=None):
+        chat_list = list(chats)
+        calls.append([item.chat_id for item in chat_list])
+        result = {
+            item.chat_id: {
+                "self_to_peer_warmth": 0.9,
+                "peer_to_self_warmth": 0.85,
+                "mutuality": 0.88,
+                "tension": 0.1,
+            }
+            for item in chat_list
+        }
+        if on_chat_scored is not None:
+            for item in chat_list:
+                on_chat_scored(item.chat_id, result[item.chat_id], False)
+        return result
+
+    monkeypatch.setattr("social_graph_service.pipeline.enrich_private_chat_scores", fake_enrich)
+    monkeypatch.setattr(
+        "social_graph_service.pipeline._select_llm_chats_for_enrichment",
+        lambda visible_chats, snapshot: [chat, second_chat] if snapshot["as_of_date"] == first_snapshot_key else [chat],
+    )
+
+    result = _enrich_snapshot_series(
+        chats=[chat, second_chat],
+        snapshot_series=payload["snapshot_series"],
+        temporal_payload=payload,
+        temporal_config=config,
+        output_dir=tmp_path,
+    )
+
+    assert len(result[first_snapshot_key]) == 2
+    assert result[first_snapshot_key]["chat-1"]["self_to_peer_warmth"] == 0.1
+    assert result[first_snapshot_key]["chat-2"]["self_to_peer_warmth"] == 0.9
+    assert calls

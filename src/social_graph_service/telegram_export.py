@@ -55,7 +55,8 @@ def load_chats(root: Path, self_name: Optional[str] = None) -> tuple[List[Chat],
     chats: List[Chat] = []
 
     for file_path in files:
-        loaded = _load_chat_file(file_path, self_name=self_name)
+        export_root = file_path.parent if file_path.is_file() else root
+        loaded = _load_chat_file(file_path, export_root=export_root, self_name=self_name)
         for chat in loaded:
             if not chat.messages:
                 continue
@@ -66,13 +67,13 @@ def load_chats(root: Path, self_name: Optional[str] = None) -> tuple[List[Chat],
     return chats, stats
 
 
-def _load_chat_file(path: Path, self_name: Optional[str] = None) -> List[Chat]:
+def _load_chat_file(path: Path, export_root: Path, self_name: Optional[str] = None) -> List[Chat]:
     with path.open("r", encoding="utf-8") as handle:
         payload = json.load(handle)
     self_identity = _extract_self_identity(payload, override_name=self_name)
 
     if isinstance(payload, dict) and "messages" in payload:
-        chat = _parse_single_chat(payload, path, self_identity=self_identity)
+        chat = _parse_single_chat(payload, path, export_root=export_root, self_identity=self_identity)
         return [chat] if chat else []
 
     if isinstance(payload, dict) and isinstance(payload.get("chats"), dict):
@@ -81,7 +82,7 @@ def _load_chat_file(path: Path, self_name: Optional[str] = None) -> List[Chat]:
         for item in chat_list:
             if not isinstance(item, dict):
                 continue
-            chat = _parse_single_chat(item, path, self_identity=self_identity)
+            chat = _parse_single_chat(item, path, export_root=export_root, self_identity=self_identity)
             if chat:
                 parsed.append(chat)
         return parsed
@@ -89,7 +90,13 @@ def _load_chat_file(path: Path, self_name: Optional[str] = None) -> List[Chat]:
     return []
 
 
-def _parse_single_chat(payload: Dict[str, Any], path: Path, self_identity: Optional[SelfIdentity] = None) -> Optional[Chat]:
+def _parse_single_chat(
+    payload: Dict[str, Any],
+    path: Path,
+    *,
+    export_root: Path,
+    self_identity: Optional[SelfIdentity] = None,
+) -> Optional[Chat]:
     raw_messages = payload.get("messages", [])
     if not isinstance(raw_messages, list):
         return None
@@ -105,6 +112,7 @@ def _parse_single_chat(payload: Dict[str, Any], path: Path, self_identity: Optio
             chat_id=chat_id,
             chat_name=chat_name,
             chat_type=chat_type,
+            export_root=export_root,
             self_identity=self_identity,
         )
         if message is not None:
@@ -139,6 +147,7 @@ def _parse_message(
     chat_id: str,
     chat_name: str,
     chat_type: str,
+    export_root: Path,
     self_identity: Optional[SelfIdentity] = None,
 ) -> Optional[Message]:
     if not isinstance(payload, dict):
@@ -152,7 +161,18 @@ def _parse_message(
     timestamp = _parse_timestamp(payload)
     is_outgoing = bool(payload.get("out")) or _looks_like_self(sender_name, sender_id, self_identity=self_identity)
     reply_to_message_id = payload.get("reply_to_message_id")
-    media_kind, media_path, media_duration_seconds, sticker_emoji = _parse_media(payload)
+    (
+        media_kind,
+        media_path,
+        media_thumbnail_path,
+        mime_type,
+        media_duration_seconds,
+        media_width,
+        media_height,
+        media_file_size_bytes,
+        media_has_binary,
+        sticker_emoji,
+    ) = _parse_media(payload, export_root=export_root)
 
     return Message(
         chat_id=chat_id,
@@ -167,7 +187,13 @@ def _parse_message(
         reply_to_message_id=str(reply_to_message_id) if reply_to_message_id is not None else None,
         media_kind=media_kind,
         media_path=media_path,
+        media_thumbnail_path=media_thumbnail_path,
+        mime_type=mime_type,
         media_duration_seconds=media_duration_seconds,
+        media_width=media_width,
+        media_height=media_height,
+        media_file_size_bytes=media_file_size_bytes,
+        media_has_binary=media_has_binary,
         sticker_emoji=sticker_emoji,
         raw=payload,
     )
@@ -240,12 +266,30 @@ def _extract_self_identity(payload: Dict[str, Any], override_name: Optional[str]
     )
 
 
-def _parse_media(payload: Dict[str, Any]) -> Tuple[Optional[str], Optional[str], Optional[float], Optional[str]]:
+def _parse_media(
+    payload: Dict[str, Any],
+    *,
+    export_root: Path,
+) -> Tuple[
+    Optional[str],
+    Optional[str],
+    Optional[str],
+    Optional[str],
+    Optional[float],
+    Optional[int],
+    Optional[int],
+    Optional[int],
+    bool,
+    Optional[str],
+]:
     sticker_emoji = _as_optional_string(payload.get("sticker_emoji"))
-    media_path = _as_optional_string(payload.get("photo")) or _as_optional_string(payload.get("file"))
+    media_path = _clean_media_path(_as_optional_string(payload.get("photo")) or _as_optional_string(payload.get("file")))
+    thumbnail_path = _clean_media_path(_as_optional_string(payload.get("thumbnail")))
     duration = _as_optional_float(payload.get("duration_seconds")) or _as_optional_float(payload.get("duration"))
     raw_media_type = _as_optional_string(payload.get("media_type"))
     mime_type = _as_optional_string(payload.get("mime_type"))
+    media_width = _as_optional_int(payload.get("width"))
+    media_height = _as_optional_int(payload.get("height"))
 
     media_kind: Optional[str] = None
     if raw_media_type:
@@ -260,8 +304,25 @@ def _parse_media(payload: Dict[str, Any]) -> Tuple[Optional[str], Optional[str],
         media_kind = _infer_media_kind_from_mime(mime_type)
     if media_kind is None and media_path:
         media_kind = _infer_media_kind_from_path(media_path)
+    if mime_type is None and media_path:
+        mime_type = _infer_mime_type_from_path(media_path)
 
-    return media_kind, media_path, duration, sticker_emoji
+    resolved_path = export_root / media_path if media_path else None
+    media_has_binary = bool(resolved_path and resolved_path.exists())
+    media_file_size_bytes = resolved_path.stat().st_size if media_has_binary and resolved_path is not None else None
+
+    return (
+        media_kind,
+        media_path,
+        thumbnail_path,
+        mime_type,
+        duration,
+        media_width,
+        media_height,
+        media_file_size_bytes,
+        media_has_binary,
+        sticker_emoji,
+    )
 
 
 def _infer_media_kind_from_mime(mime_type: str) -> Optional[str]:
@@ -296,6 +357,44 @@ def _as_optional_string(value: Any) -> Optional[str]:
     if isinstance(value, str) and value.strip():
         return value
     return None
+
+
+def _infer_mime_type_from_path(path: str) -> Optional[str]:
+    lowered = path.casefold()
+    if lowered.endswith(".ogg"):
+        return "audio/ogg"
+    if lowered.endswith(".mp3"):
+        return "audio/mpeg"
+    if lowered.endswith(".mp4"):
+        return "video/mp4"
+    if lowered.endswith(".webm"):
+        return "video/webm"
+    if lowered.endswith(".jpg") or lowered.endswith(".jpeg"):
+        return "image/jpeg"
+    if lowered.endswith(".png"):
+        return "image/png"
+    if lowered.endswith(".webp"):
+        return "image/webp"
+    if lowered.endswith(".pdf"):
+        return "application/pdf"
+    return None
+
+
+def _clean_media_path(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    if value.startswith("(") and "not included" in value.casefold():
+        return None
+    return value
+
+
+def _as_optional_int(value: Any) -> Optional[int]:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _as_optional_float(value: Any) -> Optional[float]:

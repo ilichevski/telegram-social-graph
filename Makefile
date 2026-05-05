@@ -1,7 +1,7 @@
 PYTHON ?= python3
 VENV_PYTHON = .venv/bin/python
 
-.PHONY: setup models analyze analyze-llm test api
+.PHONY: setup models analyze analyze-llm test api sanity preview screenshots
 
 setup:
 	./scripts/setup_local.sh
@@ -20,3 +20,12 @@ test:
 
 api:
 	PYTHONPATH=src $(VENV_PYTHON) -m uvicorn social_graph_service.api:app --reload
+
+sanity:
+	./scripts/shell_sanity_check.sh
+
+preview:
+	./scripts/preview_report.sh
+
+screenshots:
+	./scripts/update_readme_screenshots.sh

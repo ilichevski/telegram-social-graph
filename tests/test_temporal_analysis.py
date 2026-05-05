@@ -107,3 +107,50 @@ def test_support_and_formality_scores_are_detectable() -> None:
 
     assert relationship["outbound"]["support_score"] >= 0.45
     assert relationship["inbound"]["formality_score"] >= 0.35
+
+
+def test_media_signals_influence_snapshot_scores() -> None:
+    chat = Chat(
+        chat_id="chat-1",
+        name="Alice",
+        chat_type="private",
+        messages=[
+            Message(
+                chat_id="chat-1",
+                chat_name="Alice",
+                chat_type="private",
+                message_id="1",
+                sender_id="self",
+                sender_name="Me",
+                timestamp=datetime(2026, 4, 28, 10, 0, tzinfo=timezone.utc),
+                text="",
+                is_outgoing=True,
+                media_kind="voice",
+                media_duration_seconds=80,
+                media_has_binary=True,
+            ),
+            Message(
+                chat_id="chat-1",
+                chat_name="Alice",
+                chat_type="private",
+                message_id="2",
+                sender_id="alice",
+                sender_name="Alice",
+                timestamp=datetime(2026, 4, 28, 10, 5, tzinfo=timezone.utc),
+                text="",
+                is_outgoing=False,
+                media_kind="sticker",
+                sticker_emoji="❤️",
+                media_has_binary=True,
+            ),
+        ],
+    )
+
+    payload = analyze_temporal([chat], TemporalConfig(as_of_date=date(2026, 5, 2)))
+    relationship = payload["snapshot_now"]["relationships"][0]
+
+    assert relationship["outbound"]["voice_minutes_90d"] > 1.0
+    assert relationship["outbound"]["media_intimacy_score"] > 0.4
+    assert relationship["inbound"]["media_playfulness_score"] >= 0.08
+    assert relationship["pair"]["mutual_media_intimacy"] > 0.2
+    assert relationship["pair"]["media_reciprocity"] > 0.0

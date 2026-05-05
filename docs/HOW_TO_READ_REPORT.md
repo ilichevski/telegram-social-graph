@@ -64,6 +64,19 @@ This is the current warmth estimate in each direction.
 - above `100`: warmer than the baseline
 - below `100`: colder than the baseline
 
+## Synthetic network indices
+
+The dashboard may also show two weekly network-level synthetic indices:
+
+- `Social Connectedness Index`
+- `Social Climate Index`
+
+These are intended for trend reading across the visible time window, not diagnosis.
+
+Full scoring details:
+
+- [SCORING_AND_INDICES.md](./SCORING_AND_INDICES.md)
+
 ## What to trust most
 
 Best signals:

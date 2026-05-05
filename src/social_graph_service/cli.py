@@ -29,6 +29,7 @@ def build_parser() -> argparse.ArgumentParser:
     analyze.add_argument("--window-days", type=int, default=90, help="Main evidence window in days.")
     analyze.add_argument("--short-window-days", type=int, default=30, help="Short recency window in days.")
     analyze.add_argument("--with-llm", action="store_true", help="Enable local Ollama emotional scoring.")
+    analyze.add_argument("--with-voice-asr", action="store_true", help="Enable fully local voice transcription for Telegram voice/audio messages.")
 
     report = subparsers.add_parser("report", help="Render an HTML report from graph artifacts.")
     report.add_argument("graph_json", type=Path, help="Path to graph.json.")
@@ -52,6 +53,7 @@ def main() -> None:
             window_days=args.window_days,
             short_window_days=args.short_window_days,
             with_llm=args.with_llm,
+            with_voice_asr=args.with_voice_asr,
         )
         compact = {
             "output_path": summary["output_path"],

@@ -10,14 +10,15 @@ from datetime import datetime, timezone
 from statistics import median
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence
 
+from .media_signals import message_media_signal
 from .models import Chat, Message
 from .temporal_analysis import DEPTH_MARKERS, FORMALITY_MARKERS, SUPPORT_MARKERS, SESSION_BREAK_HOURS
 
 
 DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
-TRANSCRIPT_LINE_LIMIT = int(os.getenv("OLLAMA_TRANSCRIPT_LIMIT", "120"))
-MAX_SESSION_COUNT = int(os.getenv("OLLAMA_SESSION_COUNT", "5"))
-MAX_LINES_PER_SESSION = int(os.getenv("OLLAMA_LINES_PER_SESSION", "16"))
+TRANSCRIPT_LINE_LIMIT = int(os.getenv("OLLAMA_TRANSCRIPT_LIMIT", "90"))
+MAX_SESSION_COUNT = int(os.getenv("OLLAMA_SESSION_COUNT", "4"))
+MAX_LINES_PER_SESSION = int(os.getenv("OLLAMA_LINES_PER_SESSION", "12"))
 
 WARM_MARKERS = (
     "дорог",
@@ -63,7 +64,7 @@ TENSION_MARKERS = (
 class OllamaConfig:
     model: str = os.getenv("OLLAMA_MODEL", "qwen3:8b")
     endpoint: str = os.getenv("OLLAMA_URL", DEFAULT_OLLAMA_URL)
-    timeout_seconds: int = int(os.getenv("OLLAMA_TIMEOUT", "120"))
+    timeout_seconds: int = int(os.getenv("OLLAMA_TIMEOUT", "60"))
 
 
 class OllamaError(RuntimeError):
@@ -117,7 +118,7 @@ def enrich_private_chat_scores(
 
 
 def _build_chat_context(chat: Chat) -> Dict[str, object]:
-    messages = [message for message in chat.messages if (message.text or "").strip()]
+    messages = [message for message in chat.messages if (message.text or "").strip() or message.media_kind]
     if not messages:
         return {"transcript": "", "stats": {}, "session_count": 0}
 
@@ -244,10 +245,28 @@ def _render_session_transcript(sessions: Sequence[Sequence[Message]]) -> str:
         lines = [f"[Session {idx} | {start} -> {end} | {len(session)} messages]"]
         for message in session[-MAX_LINES_PER_SESSION:]:
             speaker = "YOU" if message.is_outgoing else message.sender_name
-            text = " ".join((message.text or "").split())
+            text = " ".join((message.text or "").split()) or _render_media_stub(message)
             lines.append(f"{speaker}: {text}")
         blocks.append("\n".join(lines))
     return "\n\n".join(blocks)
+
+
+def _render_media_stub(message: Message) -> str:
+    kind = (message.media_kind or "media").upper()
+    if message.media_kind == "voice":
+        return f"[VOICE {int(round(float(message.media_duration_seconds or 0.0)))}s]"
+    if message.media_kind == "audio":
+        return f"[AUDIO {int(round(float(message.media_duration_seconds or 0.0)))}s]"
+    if message.media_kind == "sticker":
+        emoji = message.sticker_emoji or ""
+        return f"[STICKER {emoji}]".strip()
+    if message.media_kind == "photo":
+        return "[PHOTO]"
+    if message.media_kind == "gif":
+        return "[GIF]"
+    if message.media_kind == "video":
+        return f"[VIDEO {int(round(float(message.media_duration_seconds or 0.0)))}s]"
+    return f"[{kind}]"
 
 
 def _behavioral_summary(messages: Sequence[Message], sessions: Sequence[Sequence[Message]]) -> Dict[str, object]:
@@ -277,6 +296,33 @@ def _behavioral_summary(messages: Sequence[Message], sessions: Sequence[Sequence
         "formal": sum(_marker_hits(message.text or "", FORMALITY_MARKERS) for message in messages),
         "tension": sum(_marker_hits(message.text or "", TENSION_MARKERS) for message in messages),
     }
+    media_counts: Dict[str, int] = {}
+    sticker_emoji_counts: Dict[str, int] = {}
+    voice_minutes_you = 0.0
+    voice_minutes_them = 0.0
+    media_intimacy_you = 0.0
+    media_intimacy_them = 0.0
+    media_messages_you = 0
+    media_messages_them = 0
+
+    for message in messages:
+        if message.media_kind:
+            media_counts[message.media_kind] = media_counts.get(message.media_kind, 0) + 1
+            if message.sticker_emoji:
+                sticker_emoji_counts[message.sticker_emoji] = sticker_emoji_counts.get(message.sticker_emoji, 0) + 1
+            signal = message_media_signal(message)
+            if message.is_outgoing:
+                media_intimacy_you += signal.intimacy
+                media_messages_you += 1
+            else:
+                media_intimacy_them += signal.intimacy
+                media_messages_them += 1
+            if message.media_kind in {"voice", "audio", "video"}:
+                minutes = float(message.media_duration_seconds or 0.0) / 60.0
+                if message.is_outgoing:
+                    voice_minutes_you += minutes
+                else:
+                    voice_minutes_them += minutes
 
     return {
         "messages_total": total_messages,
@@ -293,6 +339,12 @@ def _behavioral_summary(messages: Sequence[Message], sessions: Sequence[Sequence
         "session_starts_you": session_starts_out,
         "session_starts_them": session_starts_in,
         "marker_counts": marker_counts,
+        "media_counts": media_counts,
+        "top_sticker_emoji": sorted(sticker_emoji_counts.items(), key=lambda item: item[1], reverse=True)[:10],
+        "voice_minutes_you": round(voice_minutes_you, 1),
+        "voice_minutes_them": round(voice_minutes_them, 1),
+        "media_intimacy_you": round(media_intimacy_you / media_messages_you, 4) if media_messages_you else 0.0,
+        "media_intimacy_them": round(media_intimacy_them / media_messages_them, 4) if media_messages_them else 0.0,
     }
 
 
@@ -360,6 +412,7 @@ def _build_prompt(chat_name: str, context: Dict[str, object]) -> str:
         "- mutuality: how reciprocal and two-sided the current relationship feels overall.\n"
         "- tension: irritation, conflict, coldness, strain.\n"
         "- confidence: how reliable your judgment is from the provided evidence.\n"
+        "- voice notes, sticker usage, GIFs, photos, and other media in the behavioral summary are meaningful social signals.\n"
         "Prefer conservative scores when evidence is mixed.\n"
         f"CHAT: {chat_name}\n"
         f"BEHAVIORAL_SUMMARY: {stats_json}\n"
